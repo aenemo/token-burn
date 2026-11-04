@@ -1,6 +1,6 @@
 import sys
 
-from ccu.cli import main
+from token_burn.cli import main
 
 if __name__ == "__main__":
     sys.exit(main())

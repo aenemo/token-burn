@@ -1,10 +1,10 @@
 /* Cursor provider: palette, labels and the notes shown from meta. All calculations are shared (stats.js). */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
-  CCU.providers = CCU.providers || {};
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
+  TokenBurn.providers = TokenBurn.providers || {};
 
-  CCU.providers.cursor = {
+  TokenBurn.providers.cursor = {
     id: 'cursor',
     name: 'Cursor',
     mainAgentName: 'Main agent',

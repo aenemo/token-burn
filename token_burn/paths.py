@@ -10,8 +10,8 @@ URL = "http://127.0.0.1:%d/" % PORT
 
 
 def data_dir():
-    """CCU_DATA_DIR, else the collector's DATA_DIR when importable, else a per-OS default."""
-    env = os.environ.get("CCU_DATA_DIR")
+    """TOKEN_BURN_DATA_DIR, else the collector's DATA_DIR when importable, else a per-OS default."""
+    env = os.environ.get("TOKEN_BURN_DATA_DIR")
     if env:
         return Path(env)
     try:
@@ -43,13 +43,13 @@ def is_windows():
 
 
 def self_command(*args, windowless=True):
-    """argv list that launches this program. On Windows, prefer ccuw.exe (frozen) or pythonw.exe (no console window)
+    """argv list that launches this program. On Windows, prefer token-burnw.exe (frozen) or pythonw.exe (no console window)
     unless windowless=False (hooks need stdout, which pythonw discards)."""
     if getattr(sys, "frozen", False):
         exe = sys.executable
         if windowless and is_windows():
-            # ccuw.exe is the GUI-subsystem twin of ccu.exe (no console window).
-            w = Path(exe).with_name("ccuw.exe")
+            # token-burnw.exe is the GUI-subsystem twin of token-burn.exe (no console window).
+            w = Path(exe).with_name("token-burnw.exe")
             if w.is_file():
                 exe = str(w)
         return [exe] + list(args)
@@ -58,7 +58,7 @@ def self_command(*args, windowless=True):
         pw = Path(exe).with_name("pythonw.exe")
         if pw.is_file():
             exe = str(pw)
-    return [exe, "-m", "ccu"] + list(args)
+    return [exe, "-m", "token_burn"] + list(args)
 
 
 def quote_command(argv):

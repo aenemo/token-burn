@@ -1,11 +1,11 @@
-"""Hook handlers for `ccu hook claude|cursor`. Never raise, always exit 0."""
+"""Hook handlers for `token-burn hook claude|cursor`. Never raise, always exit 0."""
 import datetime as dt
 import json
 import sys
 import time
 from pathlib import Path
 
-from ccu import paths
+from token_burn import paths
 
 EFFORT_NAMES = {"xhigh": "extra", "extra_high": "extra", "extra-high": "extra"}
 CLAUDE_LOG = "claude-subagents.jsonl"

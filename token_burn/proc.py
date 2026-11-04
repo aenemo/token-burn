@@ -5,7 +5,7 @@ import sys
 import time
 import urllib.request
 
-from ccu import paths
+from token_burn import paths
 
 
 def pid_file():

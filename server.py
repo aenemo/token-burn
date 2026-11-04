@@ -5,7 +5,7 @@ Routes: / and /index.html -> web/index.html, /web/* static,
         /api/usage.json -> data/usage.json, /api/health -> {"ok": true, ...}.
 Stdlib only. Runs under pythonw (no stdout reliance).
 
-The data folder can be overridden with the CCU_DATA_DIR environment variable
+The data folder can be overridden with the TOKEN_BURN_DATA_DIR environment variable
 or the data_dir argument of make_server (used by the tests).
 """
 import argparse
@@ -28,7 +28,7 @@ def _web_dir():
     src = ROOT / "web"
     if (src / "index.html").is_file():
         return src
-    installed = ROOT / "ccu" / "web"  # wheel install: web/ shipped as package ccu.web
+    installed = ROOT / "token_burn" / "web"  # wheel install: web/ shipped as package token_burn.web
     return installed if (installed / "index.html").is_file() else src
 
 
@@ -83,7 +83,7 @@ class Server(ThreadingHTTPServer):
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ccu-dashboard/1"
+    server_version = "token-burn-dashboard/1"
 
     def log_message(self, fmt, *args):
         pass
@@ -191,7 +191,7 @@ def make_server(port, data_dir=None, web_dir=None):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     try:
-        default_port = int(os.environ.get("CCU_PORT") or DEFAULT_PORT)
+        default_port = int(os.environ.get("TOKEN_BURN_PORT") or DEFAULT_PORT)
     except ValueError:
         default_port = DEFAULT_PORT
     ap.add_argument("--port", type=int, default=default_port)

@@ -10,15 +10,15 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from unittest import mock
 
-from ccu import cli, hook, hooks_register as hr, paths
-from ccu.scheduler import get_backend, linux, macos, windows
+from token_burn import cli, hook, hooks_register as hr, paths
+from token_burn.scheduler import get_backend, linux, macos, windows
 
 
 class Tmp(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
-        env = mock.patch.dict(os.environ, {"CCU_DATA_DIR": str(self.tmp / "data"),
+        env = mock.patch.dict(os.environ, {"TOKEN_BURN_DATA_DIR": str(self.tmp / "data"),
                                            "CLAUDE_CONFIG_DIR": str(self.tmp / "claude")})
         env.start()
         self.addCleanup(env.stop)
@@ -35,7 +35,7 @@ class TestPaths(unittest.TestCase):
     def test_self_command_module(self):
         with mock.patch.object(sys, "frozen", False, create=True):
             cmd = paths.self_command("hook", "claude", windowless=False)
-            self.assertEqual(cmd, [sys.executable, "-m", "ccu", "hook", "claude"])
+            self.assertEqual(cmd, [sys.executable, "-m", "token_burn", "hook", "claude"])
 
     def test_pythonw_preferred_on_windows(self):
         d = Path(tempfile.mkdtemp())
@@ -48,13 +48,13 @@ class TestPaths(unittest.TestCase):
 
     def test_quote_posix_and_windows(self):
         with mock.patch.object(sys, "platform", "linux"):
-            self.assertEqual(paths.quote_command(["/a b/py", "-m", "ccu"]), "'/a b/py' -m ccu")
+            self.assertEqual(paths.quote_command(["/a b/py", "-m", "token_burn"]), "'/a b/py' -m token_burn")
         with mock.patch.object(sys, "platform", "win32"):
-            self.assertEqual(paths.quote_command(["C:/a b/py.exe", "-m", "ccu"]), '"C:/a b/py.exe" -m ccu')
+            self.assertEqual(paths.quote_command(["C:/a b/py.exe", "-m", "token_burn"]), '"C:/a b/py.exe" -m token_burn')
 
     def test_data_dir_defaults(self):
         with mock.patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("CCU_DATA_DIR", None)
+            os.environ.pop("TOKEN_BURN_DATA_DIR", None)
             with mock.patch.dict(sys.modules, {"collector": None}):
                 with mock.patch.object(sys, "platform", "darwin"):
                     self.assertIn("Application Support", str(paths.data_dir()))
@@ -65,14 +65,14 @@ class TestPaths(unittest.TestCase):
 class TestRender(unittest.TestCase):
     def test_windows_xml(self):
         for kind in ("refresh", "server"):
-            x = windows.render_task_xml(["C:\\Py\\pythonw.exe", "-m", "ccu", "collect"], kind,
+            x = windows.render_task_xml(["C:\\Py\\pythonw.exe", "-m", "token_burn", "collect"], kind,
                                         user="PC\\me", start="2026-01-01T00:00:00")
             root = ET.fromstring(x.replace('encoding="UTF-16"', ""))
             ns = {"t": windows.NS}
             self.assertEqual(root.find(".//t:Hidden", ns).text, "true")
             self.assertEqual(root.find(".//t:MultipleInstancesPolicy", ns).text, "IgnoreNew")
             self.assertEqual(root.find(".//t:Exec/t:Command", ns).text, "C:\\Py\\pythonw.exe")
-            self.assertEqual(root.find(".//t:Exec/t:Arguments", ns).text, "-m ccu collect")
+            self.assertEqual(root.find(".//t:Exec/t:Arguments", ns).text, "-m token_burn collect")
             self.assertIsNotNone(root.find(".//t:LogonTrigger", ns))
             rep = root.find(".//t:TimeTrigger/t:Repetition/t:Interval", ns)
             if kind == "refresh":
@@ -81,12 +81,12 @@ class TestRender(unittest.TestCase):
                 self.assertIsNone(rep)
 
     def test_macos_plists(self):
-        r = plistlib.loads(macos.render_plist("com.ccu.refresh", ["/x/py", "-m", "ccu", "collect"],
+        r = plistlib.loads(macos.render_plist("com.token-burn.refresh", ["/x/py", "-m", "token_burn", "collect"],
                                               "refresh", "/tmp").encode())
         self.assertEqual(r["StartInterval"], 60)
         self.assertTrue(r["RunAtLoad"])
         self.assertEqual(r["ProgramArguments"][-1], "collect")
-        s = plistlib.loads(macos.render_plist("com.ccu.server", ["/x/py", "serve"], "server", "/tmp").encode())
+        s = plistlib.loads(macos.render_plist("com.token-burn.server", ["/x/py", "serve"], "server", "/tmp").encode())
         self.assertTrue(s["KeepAlive"] and s["RunAtLoad"])
         self.assertNotIn("StartInterval", s)
 
@@ -112,13 +112,13 @@ class TestRender(unittest.TestCase):
     def test_windows_install_runs_schtasks(self):
         calls = []
         with mock.patch.object(windows, "run", side_effect=lambda a, **k: calls.append(a) or (0, "")):
-            msgs = windows.install(["py", "-m", "ccu", "collect"], ["py", "-m", "ccu", "serve"])
+            msgs = windows.install(["py", "-m", "token_burn", "collect"], ["py", "-m", "token_burn", "serve"])
         self.assertEqual(len(msgs), 2)
         self.assertTrue(all(c[0] == "schtasks" and "/XML" in c for c in calls))
 
 
 class TestHooksRegister(Tmp):
-    CMD = "py -m ccu hook claude"
+    CMD = "py -m token_burn hook claude"
 
     def test_claude_idempotent_preserves_and_uninstalls(self):
         s = paths.claude_dir() / "settings.json"
@@ -132,7 +132,7 @@ class TestHooksRegister(Tmp):
         cfg = json.loads(first)
         self.assertEqual(len(cfg["hooks"]["SubagentStop"]), 2)
         self.assertEqual(cfg["theme"], "dark")
-        self.assertTrue(list(s.parent.glob("settings.json.bak-ccu-*")))
+        self.assertTrue(list(s.parent.glob("settings.json.bak-token-burn-*")))
         self.assertEqual(hr.uninstall_claude(), "removed")
         cfg = json.loads(s.read_text())
         self.assertEqual(cfg["hooks"], {"SubagentStop": [other], "Stop": [other]})
@@ -160,7 +160,7 @@ class TestHooksRegister(Tmp):
         j.parent.mkdir(parents=True)
         keep = {"command": "other.sh"}
         j.write_text(json.dumps({"version": 1, "hooks": {"subagentStop": [keep], "stop": [keep]}}))
-        cmd = "py -m ccu hook cursor"
+        cmd = "py -m token_burn hook cursor"
         self.assertEqual(hr.install_cursor(cmd), "installed")
         self.assertEqual(hr.install_cursor(cmd), "already installed")
         cfg = json.loads(j.read_text())
@@ -173,9 +173,9 @@ class TestHooksRegister(Tmp):
         self.assertEqual(hr.uninstall_cursor(), "not present")
 
     def test_is_ours(self):
-        self.assertTrue(hr.is_ours('"C:/Py/pythonw.exe" -m ccu hook cursor'))
-        self.assertTrue(hr.is_ours("/opt/ccu/ccu hook claude"))
-        self.assertFalse(hr.is_ours('powershell -File "C:\\u\\.cursor\\hooks\\ccu-subagent-hook.ps1"'))
+        self.assertTrue(hr.is_ours('"C:/Py/pythonw.exe" -m token_burn hook cursor'))
+        self.assertTrue(hr.is_ours("/opt/token-burn/token-burn hook claude"))
+        self.assertFalse(hr.is_ours('powershell -File "C:\\u\\.cursor\\hooks\\token-burn-subagent-hook.ps1"'))
         self.assertFalse(hr.is_ours("echo hook claude"))
 
 
@@ -314,7 +314,7 @@ class TestCli(Tmp):
 class TestCollectArgs(unittest.TestCase):
     def test_collect_passes_explicit_argv(self):
         from unittest import mock
-        from ccu import cli
+        from token_burn import cli
         with mock.patch("collector.collect.main", return_value=0) as m:
             cli.main(["collect"])
             m.assert_called_with([])

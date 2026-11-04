@@ -67,11 +67,11 @@ flowchart LR
 | Server | `server.py` | Loopback-only static and JSON server |
 | Frontend | `web/` | One page, up to three columns |
 | Hooks | `hooks/` | Claude and Cursor subagent recorders, both Python |
-| CLI and schedulers | `ccu/` | `ccu` command (install, uninstall, status, serve, collect, hook) and per-OS scheduler back ends (Task Scheduler on Windows, launchd on macOS, systemd user units or cron on Linux) |
+| CLI and schedulers | `token_burn/` | `token-burn` command (install, uninstall, status, serve, collect, hook) and per-OS scheduler back ends (Task Scheduler on Windows, launchd on macOS, systemd user units or cron on Linux) |
 
 ## Data flow, every minute
 
-1. The per-OS scheduler (Task Scheduler, launchd or systemd user timer) runs `ccu collect` every minute.
+1. The per-OS scheduler (Task Scheduler, launchd or systemd user timer) runs `token-burn collect` every minute.
 2. `collect.py` takes `data/collect.lock`. If another run holds it (and it is not stale, 300 s), this run exits quietly.
 3. **Claude adapter.** It discovers `projects/*/*.jsonl` and `projects/*/*/subagents/agent-*.jsonl`, skips files older than 30 days, reads each from its saved byte offset to the last complete line, and turns each assistant line into one usage record. Duplicates are dropped through the `seen` table. `cost-state` lines update the per-session cost. Subagent runs are merged from the transcripts and `data/claude-subagents.jsonl`.
 4. **Cursor adapter.** It reads the access token (read-only) from `state.vscdb`, then fetches usage events from `last_ts` minus 2 hours (or 30 days on backfill or first run), tries the cursor.com endpoint then the api2 fallback, pages through results, and stores each new event. Duplicates are dropped through the `seen` table. It reads `data/cursor-subagent-events.jsonl` and stores subagent runs.

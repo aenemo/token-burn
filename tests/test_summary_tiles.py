@@ -11,7 +11,7 @@ START = "2026-01-01T00:00:00Z"
 
 def run(series):
     js = ("global.window={};eval(require('fs').readFileSync(process.argv[1],'utf8'));"
-          "var S=window.CCU.stats;var P={start:'%s',series:[%s]};"
+          "var S=window.TokenBurn.stats;var P={start:'%s',series:[%s]};"
           "var fr=S.frame(P,'30m',Date.parse('%s')+10*60000+5000);"
           "var t=S.totals(S.seriesStats(P,fr));"
           "console.log(JSON.stringify({t:t,h:S.cacheHitRate(t)}));" % (START, series, START))
@@ -56,7 +56,7 @@ class SummaryTiles(unittest.TestCase):
 
 def supported(series):
     js = ("global.window={};eval(require('fs').readFileSync(process.argv[1],'utf8'));"
-          "var S=window.CCU.stats;console.log(JSON.stringify(S.cacheSupported({series:[%s]})));" % series)
+          "var S=window.TokenBurn.stats;console.log(JSON.stringify(S.cacheSupported({series:[%s]})));" % series)
     return subprocess.run(["node", "-e", js, str(STATS)], capture_output=True, text=True, check=True).stdout.strip() == "true"
 
 
@@ -86,7 +86,7 @@ class CacheSupported(unittest.TestCase):
 
 def pct(f):
     js = ("global.window={};eval(require('fs').readFileSync(process.argv[1],'utf8'));"
-          "console.log(window.CCU.stats.pctText(%s));" % f)
+          "console.log(window.TokenBurn.stats.pctText(%s));" % f)
     return subprocess.run(["node", "-e", js, str(STATS)], capture_output=True, text=True, check=True).stdout.strip()
 
 

@@ -1,12 +1,12 @@
 # Configuration
 
-There is no settings file. Behaviour is set by environment variables, the `--port` option of `ccu serve`, constants in `collector/util.py` and browser preferences.
+There is no settings file. Behaviour is set by environment variables, the `--port` option of `token-burn serve`, constants in `collector/util.py` and browser preferences.
 
 ## Port
 
 | Setting | Default | How to change |
 |---|---|---|
-| Dashboard port | 8421 | `CCU_PORT=<n>` or `ccu serve --port <n>` by hand (the scheduled server job and install health check always use the default) |
+| Dashboard port | 8421 | `TOKEN_BURN_PORT=<n>` or `token-burn serve --port <n>` by hand (the scheduled server job and install health check always use the default) |
 
 The server binds to `127.0.0.1` only. A non-loopback client gets 403, and requests with an unexpected `Host` header are rejected.
 
@@ -14,21 +14,21 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 
 | Variable | Effect | Notes |
 |---|---|---|
-| `CCU_DATA_DIR` | Replaces the default per-OS data directory (database, `usage.json`, logs, hook logs) | Read once at start-up. Honoured by the collector, server and both hooks. To make it permanent set it as a user environment variable, then re-run `ccu install` so scheduled jobs pick it up, and restart Cursor |
-| `CCU_PORT` | Dashboard port | Overridden by `--port` |
-| `CCU_CLAUDE_TOKEN` | Claude OAuth access token used for plan lookups | Highest priority in the credential resolver. Falls back to the optional `keyring` extra, then Claude's own credentials file or macOS Keychain |
+| `TOKEN_BURN_DATA_DIR` | Replaces the default per-OS data directory (database, `usage.json`, logs, hook logs) | Read once at start-up. Honoured by the collector, server and both hooks. To make it permanent set it as a user environment variable, then re-run `token-burn install` so scheduled jobs pick it up, and restart Cursor |
+| `TOKEN_BURN_PORT` | Dashboard port | Overridden by `--port` |
+| `TOKEN_BURN_CLAUDE_TOKEN` | Claude OAuth access token used for plan lookups | Highest priority in the credential resolver. Falls back to the optional `keyring` extra, then Claude's own credentials file or macOS Keychain |
 | `CURSOR_STATE_DB` | Path to Cursor's `state.vscdb` | Overrides the per-OS default location |
-| `CCU_OPENCODE_DB` | Path to opencode's `opencode.db` | Overrides the default location below |
-| `XDG_DATA_HOME` | Base folder for opencode's data | Honoured on every OS when `CCU_OPENCODE_DB` is not set |
-| `CLAUDE_CONFIG_DIR` | Claude's folder (projects, credentials, settings) instead of `~/.claude` | Same variable Claude Code uses. `ccu install` honours it when registering the hook |
+| `TOKEN_BURN_OPENCODE_DB` | Path to opencode's `opencode.db` | Overrides the default location below |
+| `XDG_DATA_HOME` | Base folder for opencode's data | Honoured on every OS when `TOKEN_BURN_OPENCODE_DB` is not set |
+| `CLAUDE_CONFIG_DIR` | Claude's folder (projects, credentials, settings) instead of `~/.claude` | Same variable Claude Code uses. `token-burn install` honours it when registering the hook |
 
 ## Data directory by OS
 
 | OS | Default |
 |---|---|
-| Windows | `%LOCALAPPDATA%\ccu\data` |
-| macOS | `~/Library/Application Support/ccu/data` |
-| Linux | `$XDG_STATE_HOME/ccu` or `~/.local/state/ccu` |
+| Windows | `%LOCALAPPDATA%\token-burn\data` |
+| macOS | `~/Library/Application Support/token-burn/data` |
+| Linux | `$XDG_STATE_HOME/token-burn` or `~/.local/state/token-burn` |
 
 ## Cursor database location
 
@@ -42,7 +42,7 @@ Set `CURSOR_STATE_DB` to override.
 
 ## opencode database location
 
-opencode's data is a read-only SQLite file at `~/.local/share/opencode/opencode.db` on every OS (including Windows and macOS). If `XDG_DATA_HOME` is set, the file is `$XDG_DATA_HOME/opencode/opencode.db`. Set `CCU_OPENCODE_DB` to override both. opencode counts as installed once this file exists.
+opencode's data is a read-only SQLite file at `~/.local/share/opencode/opencode.db` on every OS (including Windows and macOS). If `XDG_DATA_HOME` is set, the file is `$XDG_DATA_HOME/opencode/opencode.db`. Set `TOKEN_BURN_OPENCODE_DB` to override both. opencode counts as installed once this file exists.
 
 Only the v2 layout (`session_v2` and `session_message` tables) is supported; any other layout shows the status "unsupported opencode data format". The file is opened read-only and never written, and opencode's credential tables are never read. Per request, the model label is `provider/model`, the effort is the model variant, reasoning tokens are added to output, compaction rows are included, and a child session counts as a subagent. opencode has no plan quota, so no plan lookup is made.
 
@@ -50,7 +50,7 @@ Cost: opencode records cost 0 for free or gateway models, so cost can read US$0.
 
 ## Claude plan credentials
 
-Plan lookups resolve a token in this order: `CCU_CLAUDE_TOKEN`, the system keyring (only if the `keyring` extra is installed), Claude's `.credentials.json` in the Claude config folder, then on macOS the Keychain item "Claude Code-credentials" (macOS may prompt once to allow access; choose Always Allow for the `ccu` or Python binary). Credentials are only read, never written.
+Plan lookups resolve a token in this order: `TOKEN_BURN_CLAUDE_TOKEN`, the system keyring (only if the `keyring` extra is installed), Claude's `.credentials.json` in the Claude config folder, then on macOS the Keychain item "Claude Code-credentials" (macOS may prompt once to allow access; choose Always Allow for the `token-burn` or Python binary). Credentials are only read, never written.
 
 ## Constants
 
@@ -67,7 +67,7 @@ Defined in `collector/util.py` (and listed in `docs/DATA-CONTRACT.md`).
 
 Cursor adapter constants (`collector/adapters/cursor.py`): page size 100, at most 100 pages per fetch, incremental overlap of 2 hours, window of 30 days.
 
-If you change a constant, the page's countdown and note text follow from `usage.json` (`token_refresh_s`, `plan_refresh_s`), but the scheduler interval is set by `ccu install` (re-run it after changing the project).
+If you change a constant, the page's countdown and note text follow from `usage.json` (`token_refresh_s`, `plan_refresh_s`), but the scheduler interval is set by `token-burn install` (re-run it after changing the project).
 
 ## Windows
 
@@ -99,12 +99,12 @@ Per browser, per origin, wrapped in try/catch so a blocked store never breaks th
 
 | Key | Values | Meaning |
 |---|---|---|
-| `ccu.window` | one of the window keys | Remembered window |
-| `ccu.metric` | `tokens` or `cost` | Remembered Tokens/Cost toggle |
-| `ccu.agents.<platform>` | `all` or `split` | Claude and opencode usage graph primary/subagent split |
-| `ccu.graph.<platform>` | `cumulative` or `rolling` | Usage graph mode for `claude`, `cursor` or `opencode` |
-| `ccu.providers` | list of visible providers | Which columns the header toggle buttons show. Uninstalled providers are disabled |
-| `ccu.span.<platform>` | one of the span keys (`30m` to `30d`) | Rolling total period for that column |
+| `token-burn.window` | one of the window keys | Remembered window |
+| `token-burn.metric` | `tokens` or `cost` | Remembered Tokens/Cost toggle |
+| `token-burn.agents.<platform>` | `all` or `split` | Claude and opencode usage graph primary/subagent split |
+| `token-burn.graph.<platform>` | `cumulative` or `rolling` | Usage graph mode for `claude`, `cursor` or `opencode` |
+| `token-burn.providers` | list of visible providers | Which columns the header toggle buttons show. Uninstalled providers are disabled |
+| `token-burn.span.<platform>` | one of the span keys (`30m` to `30d`) | Rolling total period for that column |
 
 A different port is a different origin, so preferences do not carry across ports.
 

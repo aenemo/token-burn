@@ -1,4 +1,4 @@
-"""Command line entry point: python -m ccu <install|uninstall|status|serve|collect|hook>."""
+"""Command line entry point: python -m token_burn <install|uninstall|status|serve|collect|hook>."""
 import argparse
 import atexit
 import os
@@ -6,12 +6,12 @@ import shutil
 import sys
 import webbrowser
 
-from ccu import hooks_register, paths, proc
-from ccu.scheduler import get_backend
+from token_burn import hooks_register, paths, proc
+from token_burn.scheduler import get_backend
 
 
 def build_parser():
-    ap = argparse.ArgumentParser(prog="ccu", description="Claude + Cursor token usage dashboard")
+    ap = argparse.ArgumentParser(prog="token-burn", description="Claude + Cursor token usage dashboard")
     sub = ap.add_subparsers(dest="cmd")
     sub.required = True
     p = sub.add_parser("install", help="register hooks and background tasks, start the dashboard")
@@ -114,7 +114,7 @@ def cmd_collect(args):
 
 
 def cmd_hook(args):
-    from ccu import hook
+    from token_burn import hook
     return hook.run_claude() if args.kind == "claude" else hook.run_cursor()
 
 
@@ -123,7 +123,7 @@ HANDLERS = {"install": cmd_install, "uninstall": cmd_uninstall, "status": cmd_st
 
 
 def _ensure_std_streams():
-    """GUI-subsystem exes (ccuw.exe) start with sys.stdout/sys.stderr None."""
+    """GUI-subsystem exes (token-burnw.exe) start with sys.stdout/sys.stderr None."""
     if sys.stdout is None:
         sys.stdout = open(os.devnull, "w")
     if sys.stderr is None:

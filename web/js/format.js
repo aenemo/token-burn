@@ -1,7 +1,7 @@
 /* Shared formatting helpers. Australian English: en-AU dates (dd/mm/yyyy, 24-hour), US$ money. */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
 
   function pad(n) { return n < 10 ? '0' + n : '' + n; }
   function date(ms) { var d = new Date(ms); return pad(d.getDate()) + '/' + pad(d.getMonth() + 1) + '/' + d.getFullYear(); }
@@ -33,7 +33,7 @@
   function metricValue(metric, v) { return metric === 'cost' ? usd(v) : tokens(v); }
   function metricTitle(metric, v) { return metric === 'cost' ? usd(v) : full(v) + ' tokens'; }
 
-  CCU.fmt = {
+  TokenBurn.fmt = {
     pad: pad, date: date, time: time, timeS: timeS, dt: dt, dtS: dtS, dtIso: dtIso, dtIsoS: dtIsoS,
     tokens: tokens, full: full, usd: usd, pct: pct, share: share, signed: signed, isNum: isNum,
     metricValue: metricValue, metricTitle: metricTitle

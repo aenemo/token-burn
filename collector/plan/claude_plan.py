@@ -58,9 +58,9 @@ def _keychain_credentials():
 def resolve_credentials(cred_path):
     """Return (source, full, oa) with source in env/keychain/file, or (None, None, None).
 
-    Order: CCU_CLAUDE_TOKEN (access token only) -> macOS keychain -> credentials file.
+    Order: TOKEN_BURN_CLAUDE_TOKEN (access token only) -> macOS keychain -> credentials file.
     """
-    tok = os.environ.get("CCU_CLAUDE_TOKEN", "").strip()
+    tok = os.environ.get("TOKEN_BURN_CLAUDE_TOKEN", "").strip()
     if tok:
         oa = {"accessToken": tok}
         return "env", {"claudeAiOauth": oa}, oa

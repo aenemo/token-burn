@@ -1,8 +1,8 @@
 /* Chart.js wrappers shared by both columns: cumulative usage chart and plan usage chart. */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
-  var F = CCU.fmt;
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
+  var F = TokenBurn.fmt;
 
   function cssVar(name, el) { return getComputedStyle(el || document.documentElement).getPropertyValue(name).trim(); }
   function rgba(c, a) { return 'rgba(' + c[0] + ',' + c[1] + ',' + c[2] + ',' + a + ')'; }
@@ -96,7 +96,7 @@
   function updateUse(chart, rows, fr, metric, selected, colorOf) {
     chart.data.datasets = rows.map(function (r) {
       var ds = {
-        label: r.key, data: CCU.stats.cumulativeSeries(r.series, metric, fr),
+        label: r.key, data: TokenBurn.stats.cumulativeSeries(r.series, metric, fr),
         parsing: false, normalized: true, pointRadius: 0, pointHoverRadius: 3, tension: 0, spanGaps: true
       };
       if (r.agent === 'subagent') ds.borderDash = [6, 4];
@@ -111,7 +111,7 @@
   // Rolling-total mode: one line per series row plus a bold foreground-coloured 'Total' line on top.
   // opts: { spanMin, maxPoints }. Chip selection does not dim the Total line.
   function updateRolling(chart, rows, fr, metric, selected, colorOf, opts) {
-    var St = CCU.stats, host = chart.$host;
+    var St = TokenBurn.stats, host = chart.$host;
     var span = opts.spanMin, mp = opts.maxPoints || 500;
     var sets = rows.map(function (r) {
       var ds = {
@@ -144,7 +144,7 @@
   // Vertical dashed line per plan reset, in its pool's colour, labelled at the top.
   // chart.$resetMarkers = [{ x: ms, color: 'rgb()', label: '5-hour reset' }]
   var resetMarkerPlugin = {
-    id: 'ccuResetMarkers',
+    id: 'tokenBurnResetMarkers',
     afterDatasetsDraw: function (chart) {
       var marks = chart.$resetMarkers || [];
       var xs = chart.scales.x, area = chart.chartArea;
@@ -223,7 +223,7 @@
     chart.update('none');
   }
 
-  CCU.charts = {
+  TokenBurn.charts = {
     cssVar: cssVar, rgba: rgba, rgbCss: rgbCss, makeTicks: makeTicks,
     createUse: createUse, updateUse: updateUse, updateRolling: updateRolling, restyleUse: restyleUse,
     createPlan: createPlan, updatePlan: updatePlan

@@ -2,7 +2,7 @@
 """Claude Code SubagentStop hook. Appends token totals to data/claude-subagents.jsonl.
 
 Never writes prompt text. Always exits 0 and prints nothing. Standard library only,
-no package imports. CCU_DATA_DIR overrides the data folder (used by tests).
+no package imports. TOKEN_BURN_DATA_DIR overrides the data folder (used by tests).
 """
 import datetime as dt
 import json
@@ -15,7 +15,7 @@ EFFORT_NAMES = {"xhigh": "extra", "extra_high": "extra", "extra-high": "extra"}
 
 
 def data_dir():
-    env = os.environ.get("CCU_DATA_DIR")
+    env = os.environ.get("TOKEN_BURN_DATA_DIR")
     return Path(env) if env else ROOT / "data"
 
 

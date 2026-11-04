@@ -57,7 +57,7 @@ class Base(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.db = Path(self.tmp) / "opencode.db"
         self.store = Store(os.path.join(self.tmp, "t.db"))
-        p = mock.patch.dict(os.environ, {"CCU_OPENCODE_DB": str(self.db)})
+        p = mock.patch.dict(os.environ, {"TOKEN_BURN_OPENCODE_DB": str(self.db)})
         p.start()
         self.addCleanup(p.stop)
         self.addCleanup(shutil.rmtree, self.tmp, True)
@@ -245,7 +245,7 @@ class StatusTests(Base):
         self.assertEqual(self.usage(), [])
 
     def test_util_path(self):
-        with mock.patch.dict(os.environ, {"CCU_OPENCODE_DB": ""}), \
+        with mock.patch.dict(os.environ, {"TOKEN_BURN_OPENCODE_DB": ""}), \
                 mock.patch.dict(os.environ, {"XDG_DATA_HOME": "/x"}):
             self.assertEqual(util.opencode_db(), Path("/x") / "opencode" / "opencode.db")
 

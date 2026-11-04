@@ -1,14 +1,14 @@
 /* App shell: header controls, refresh loop and the per-platform column (identical for Claude, Cursor and opencode).
- * Global API: window.CCU = { fmt, stats, charts, tables, providers: { claude, cursor, opencode }, app }.
+ * Global API: window.TokenBurn = { fmt, stats, charts, tables, providers: { claude, cursor, opencode }, app }.
  */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
-  var F = CCU.fmt, S = CCU.stats, C = CCU.charts, T = CCU.tables;
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
+  var F = TokenBurn.fmt, S = TokenBurn.stats, C = TokenBurn.charts, T = TokenBurn.tables;
 
   var REFRESH_MS = 60000, PLAN_REFRESH_S = 600; // fallbacks; usage.json token_refresh_s / plan_refresh_s override
-  var LS_WIN = 'ccu.window', LS_METRIC = 'ccu.metric', LS_PROV = 'ccu.providers';
-  var LS_GRAPH = 'ccu.graph.', LS_SPAN = 'ccu.span.', LS_AGENTS = 'ccu.agents.';
+  var LS_WIN = 'token-burn.window', LS_METRIC = 'token-burn.metric', LS_PROV = 'token-burn.providers';
+  var LS_GRAPH = 'token-burn.graph.', LS_SPAN = 'token-burn.span.', LS_AGENTS = 'token-burn.agents.';
   var HAVE_ROLLING = !!(S.SPANS && S.rollingSeries && S.rollingTotal && S.rollingInfo && S.spanDef);
   var DEFAULT_SPAN = HAVE_ROLLING ? S.DEFAULT_SPAN : null;
   var state = { data: null, win: S.DEFAULT_WINDOW, metric: 'tokens', nextAt: 0 };
@@ -647,9 +647,9 @@
   function start() {
     buildControls();
     columns = [
-      new Column(CCU.providers.claude, $('col-claude')),
-      new Column(CCU.providers.cursor, $('col-cursor')),
-      new Column(CCU.providers.opencode, $('col-opencode'))
+      new Column(TokenBurn.providers.claude, $('col-claude')),
+      new Column(TokenBurn.providers.cursor, $('col-cursor')),
+      new Column(TokenBurn.providers.opencode, $('col-opencode'))
     ];
     setInterval(function () {
       var s = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000));
@@ -673,7 +673,7 @@
     load();
   }
 
-  CCU.app = { state: state, planRefreshS: function () { return PLAN_REFRESH_S; }, columns: function () { return columns; }, render: render, load: load, start: start };
+  TokenBurn.app = { state: state, planRefreshS: function () { return PLAN_REFRESH_S; }, columns: function () { return columns; }, render: render, load: load, start: start };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
   else start();
 })();

@@ -3,11 +3,11 @@ import os
 import plistlib
 from pathlib import Path
 
-from ccu import paths
-from ccu.scheduler import run
+from token_burn import paths
+from token_burn.scheduler import run
 
-REFRESH_LABEL = "com.ccu.refresh"
-SERVER_LABEL = "com.ccu.server"
+REFRESH_LABEL = "com.token-burn.refresh"
+SERVER_LABEL = "com.token-burn.server"
 
 
 def agents_dir():

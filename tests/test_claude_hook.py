@@ -25,7 +25,7 @@ class TestHook(unittest.TestCase):
         self.data = self.tmp / "data"
 
     def run_hook(self, payload, raw=None):
-        env = dict(os.environ, CCU_DATA_DIR=str(self.data))
+        env = dict(os.environ, TOKEN_BURN_DATA_DIR=str(self.data))
         p = subprocess.run([sys.executable, str(HOOK)],
                            input=raw if raw is not None else json.dumps(payload),
                            capture_output=True, text=True, env=env, timeout=30)

@@ -5,9 +5,9 @@ import subprocess
 import tempfile
 from xml.sax.saxutils import escape
 
-from ccu.scheduler import run
+from token_burn.scheduler import run
 
-FOLDER = "\\CCU"
+FOLDER = "\\TokenBurn"
 REFRESH = FOLDER + "\\Refresh"
 SERVER = FOLDER + "\\WebServer"
 NS = "http://schemas.microsoft.com/windows/2004/02/mit/task"

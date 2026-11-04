@@ -47,8 +47,8 @@ class FrontendContract(unittest.TestCase):
         self.assertIn('<script src="/web/js/providers/opencode.js"></script>', html)
         self.assertLess(html.index("providers/cursor.js"), html.index("providers/opencode.js"))
         self.assertLess(html.index("providers/opencode.js"), html.index("js/app.js"))
-        self.assertIn("<title>Claude, Cursor and opencode Token Usage</title>", html)
-        self.assertIn("<h1>Claude, Cursor and opencode Token Usage</h1>", html)
+        self.assertIn("<title>token-burn</title>", html)
+        self.assertIn("<h1>token-burn</h1>", html)
         self.assertIn("Claude Code, Cursor or opencode", html)
         self.assertIn("Turn on a provider above to see its usage.", html)
         oc = read("js/providers/opencode.js")
@@ -67,7 +67,7 @@ class FrontendContract(unittest.TestCase):
         for p in ("claude", "cursor", "opencode"):
             self.assertRegex(html, r'data-prov="%s" aria-pressed="true"' % p)
         app = read("js/app.js")
-        self.assertIn("'ccu.providers'", app)
+        self.assertIn("'token-burn.providers'", app)
         self.assertIn("localStorage.setItem(LS_PROV", app)
         self.assertIn("setProperty('--n'", app)
         self.assertIn("function applyToggles", app)
@@ -87,8 +87,8 @@ class FrontendContract(unittest.TestCase):
 
     def test_graph_mode_switch_and_span_picker(self):
         app = read("js/app.js")
-        self.assertIn("'ccu.graph.'", app)
-        self.assertIn("'ccu.span.'", app)
+        self.assertIn("'token-burn.graph.'", app)
+        self.assertIn("'token-burn.span.'", app)
         self.assertIn("this.graph = 'cumulative'", app)
         self.assertIn("this.span = DEFAULT_SPAN", app)
         self.assertIn("S.DEFAULT_SPAN", app)
@@ -122,7 +122,7 @@ class FrontendContract(unittest.TestCase):
     def test_agents_split_switch(self):
         app = read("js/app.js")
         charts = read("js/charts.js")
-        self.assertIn("ccu.agents.", app)
+        self.assertIn("token-burn.agents.", app)
         self.assertIn("agents-btns", app)
         self.assertIn("this.agents = 'all'", app)
         self.assertIn("borderDash", charts)
@@ -145,7 +145,7 @@ class FrontendContract(unittest.TestCase):
         js = (
             "global.window={};"
             "eval(require('fs').readFileSync(process.argv[1],'utf8'));"
-            "var S=window.CCU.stats;"
+            "var S=window.TokenBurn.stats;"
             "var p={start:'2026-01-01T00:00:00Z'};"
             "var now=Date.parse('2026-01-01T01:00:30Z');"
             "console.log(JSON.stringify(S.frame(p,'30m',now)));"

@@ -1,7 +1,7 @@
 /* Shared window and statistics maths. Both providers use these functions, so both sides calculate identically. */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
 
   var WINDOWS = [
     { k: '30m', min: 30, label: '30 min' },
@@ -277,7 +277,7 @@
     return out;
   }
 
-  CCU.stats = {
+  TokenBurn.stats = {
     AGENT_SUFFIX: AGENT_SUFFIX, agentSplitRows: agentSplitRows,
     WINDOWS: WINDOWS, DEFAULT_WINDOW: DEFAULT_WINDOW, windowDef: windowDef, frame: frame,
     seriesStats: seriesStats, totals: totals, cacheHitRate: cacheHitRate, cacheSupported: cacheSupported, pctText: pctText, cumulativeSeries: cumulativeSeries,

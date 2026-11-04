@@ -23,7 +23,7 @@ Every module, script and page in this project follows this file. If code and thi
 | `TOKEN_REFRESH_S` | 60 | collector schedule and page poll |
 | `PLAN_INTERVAL_S` | 590 | plan lookup throttle per platform (about 10 minutes, as in the Claude source) |
 | `DEFAULT_PORT` | 8421 | |
-| `DATA_DIR` | `ROOT\data` | overridden by the `CCU_DATA_DIR` environment variable (read at import) |
+| `DATA_DIR` | `ROOT\data` | overridden by the `TOKEN_BURN_DATA_DIR` environment variable (read at import) |
 | `DB_PATH` | `DATA_DIR\usage.db` | |
 | `USAGE_JSON` | `DATA_DIR\usage.json` | |
 | `CLAUDE_HOOK_LOG` | `DATA_DIR\claude-subagents.jsonl` | |
@@ -50,7 +50,7 @@ hooks/claude_subagent_hook.py
 hooks/cursor_subagent_hook.py
 server.py                 python server.py [--port 8421]
 web/index.html, web/css/app.css, web/js/*.js, web/vendor/chart.umd.min.js
-ccu/cli.py, ccu/scheduler/ (per-OS scheduler back ends)
+token_burn/cli.py, token_burn/scheduler/ (per-OS scheduler back ends)
 tests/test_*.py (unittest), tests/fixtures/*, tests/parity_check.py
 docs/*.md
 ```
@@ -68,7 +68,7 @@ def iso(ts: float) -> str                    # "2026-10-21T03:51:03Z" (UTC)
 def parse_ts(s) -> float | None              # ISO 8601 (Z or offset) or epoch ms/s -> epoch seconds
 def claude_dir() -> Path                     # CLAUDE_CONFIG_DIR or ~/.claude
 def cursor_state_db() -> Path                # %APPDATA%\Cursor\User\globalStorage\state.vscdb
-def opencode_db() -> Path                    # CCU_OPENCODE_DB, else $XDG_DATA_HOME or ~/.local/share, then opencode/opencode.db (all OSes)
+def opencode_db() -> Path                    # TOKEN_BURN_OPENCODE_DB, else $XDG_DATA_HOME or ~/.local/share, then opencode/opencode.db (all OSes)
 ```
 
 ## `collector/schema.py`
@@ -354,4 +354,4 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
   - `loIdx = endIdx - W + 1`
 - **Charts:** cumulative lines per series inside the window, with Chart.js LTTB decimation at 500 samples.
 - **Refresh:** the page fetches `/api/usage.json` every 60 s with `cache: 'no-store'` and shows a "Next refresh in" countdown.
-- **localStorage:** the window and metric are remembered in `ccu.window` and `ccu.metric`, and the visible providers in `ccu.providers`, accessed inside try/catch.
+- **localStorage:** the window and metric are remembered in `token-burn.window` and `token-burn.metric`, and the visible providers in `token-burn.providers`, accessed inside try/catch.

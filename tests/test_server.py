@@ -15,7 +15,7 @@ import server  # noqa: E402
 class ServerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.tmp = Path(tempfile.mkdtemp(prefix="ccu-test-"))
+        cls.tmp = Path(tempfile.mkdtemp(prefix="token-burn-test-"))
         cls.data = cls.tmp / "data"
         cls.web = cls.tmp / "web"
         (cls.web / "js").mkdir(parents=True)
@@ -130,15 +130,15 @@ class ServerTests(unittest.TestCase):
         self.assertTrue(h._loopback())
 
     def test_env_data_dir(self):
-        old = os.environ.get("CCU_DATA_DIR")
-        os.environ["CCU_DATA_DIR"] = str(self.data)
+        old = os.environ.get("TOKEN_BURN_DATA_DIR")
+        os.environ["TOKEN_BURN_DATA_DIR"] = str(self.data)
         try:
             self.assertEqual(server.default_data_dir(), self.data)
         finally:
             if old is None:
-                del os.environ["CCU_DATA_DIR"]
+                del os.environ["TOKEN_BURN_DATA_DIR"]
             else:
-                os.environ["CCU_DATA_DIR"] = old
+                os.environ["TOKEN_BURN_DATA_DIR"] = old
 
     def test_reuse_address_off_and_log_rotation(self):
         self.assertFalse(server.Server.allow_reuse_address)

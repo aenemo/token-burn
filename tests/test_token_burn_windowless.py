@@ -6,8 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from ccu import cli, hooks_register, paths
-from ccu.scheduler import windows
+from token_burn import cli, hooks_register, paths
+from token_burn.scheduler import windows
 
 
 class FrozenWindows(unittest.TestCase):
@@ -16,29 +16,29 @@ class FrozenWindows(unittest.TestCase):
                 mock.patch.object(sys, "platform", "win32"),
                 mock.patch.object(sys, "executable", str(exe)))
 
-    def test_ccuw_used_when_present(self):
+    def test_token_burnw_used_when_present(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t)
-            (d / "ccuw.exe").write_bytes(b"")
-            p = self._patch(d / "ccu.exe")
+            (d / "token-burnw.exe").write_bytes(b"")
+            p = self._patch(d / "token-burn.exe")
             with p[0], p[1], p[2]:
                 argv = paths.self_command("collect")
-                self.assertEqual(argv, [str(d / "ccuw.exe"), "collect"])
+                self.assertEqual(argv, [str(d / "token-burnw.exe"), "collect"])
                 xml = windows.render_task_xml(argv, "refresh")
-                self.assertIn("<Command>%s</Command>" % (d / "ccuw.exe"), xml)
+                self.assertIn("<Command>%s</Command>" % (d / "token-burnw.exe"), xml)
                 self.assertEqual(paths.self_command("hook", "cursor", windowless=False)[0],
-                                 str(d / "ccu.exe"))
+                                 str(d / "token-burn.exe"))
                 self.assertTrue(hooks_register.is_ours(paths.hook_command("cursor")))
 
     def test_fallback_when_missing(self):
         with tempfile.TemporaryDirectory() as t:
             d = Path(t)
-            p = self._patch(d / "ccu.exe")
+            p = self._patch(d / "token-burn.exe")
             with p[0], p[1], p[2]:
-                self.assertEqual(paths.self_command("serve"), [str(d / "ccu.exe"), "serve"])
+                self.assertEqual(paths.self_command("serve"), [str(d / "token-burn.exe"), "serve"])
 
-    def test_is_ours_ccuw(self):
-        self.assertTrue(hooks_register.is_ours("C:/x/ccuw.exe hook claude"))
+    def test_is_ours_token_burnw(self):
+        self.assertTrue(hooks_register.is_ours("C:/x/token-burnw.exe hook claude"))
 
 
 class NoStdStreams(unittest.TestCase):

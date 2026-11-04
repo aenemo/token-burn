@@ -1,12 +1,12 @@
 /* Claude provider: palette, labels and the notes shown from meta. All calculations are shared (stats.js). */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
-  CCU.providers = CCU.providers || {};
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
+  TokenBurn.providers = TokenBurn.providers || {};
 
-  var F = CCU.fmt;
+  var F = TokenBurn.fmt;
 
-  CCU.providers.claude = {
+  TokenBurn.providers.claude = {
     id: 'claude',
     name: 'Claude',
     mainAgentName: 'Main session',

@@ -12,18 +12,18 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def default_data_dir():
-    """CCU_DATA_DIR, else the per-OS user data folder."""
-    env = os.environ.get("CCU_DATA_DIR")
+    """TOKEN_BURN_DATA_DIR, else the per-OS user data folder."""
+    env = os.environ.get("TOKEN_BURN_DATA_DIR")
     if env:
         return Path(env)
     home = Path.home()
     if sys.platform.startswith("win"):
         base = os.environ.get("LOCALAPPDATA")
-        return (Path(base) if base else home / "AppData" / "Local") / "ccu" / "data"
+        return (Path(base) if base else home / "AppData" / "Local") / "token-burn" / "data"
     if sys.platform == "darwin":
-        return home / "Library" / "Application Support" / "ccu" / "data"
+        return home / "Library" / "Application Support" / "token-burn" / "data"
     xdg = os.environ.get("XDG_STATE_HOME")
-    return (Path(xdg) if xdg else home / ".local" / "state") / "ccu"
+    return (Path(xdg) if xdg else home / ".local" / "state") / "token-burn"
 
 
 def ensure_dir(path):
@@ -147,15 +147,15 @@ class _SafeRotatingHandler(logging.handlers.RotatingFileHandler):
 
 def get_logger(name="collect"):
     """Logger writing to DATA_DIR/<name>.log, rotated to .log.1 at 1 MB."""
-    logger = logging.getLogger("ccu." + name)
+    logger = logging.getLogger("token_burn." + name)
     logger.setLevel(logging.INFO)
     logger.propagate = False
-    if not any(getattr(h, "_ccu", False) for h in logger.handlers):
+    if not any(getattr(h, "_token_burn", False) for h in logger.handlers):
         try:
             ensure_dir(DATA_DIR)
             h = _SafeRotatingHandler(str(DATA_DIR / (name + ".log")), maxBytes=LOG_MAX,
                                      backupCount=1, encoding="utf-8", delay=True)
-            h._ccu = True
+            h._token_burn = True
             h.setFormatter(_LocalIsoFormatter("%(asctime)s %(levelname)s %(message)s"))
             logger.addHandler(h)
         except OSError:
@@ -207,8 +207,8 @@ def claude_dir():
 
 
 def opencode_db():
-    """opencode's SQLite file (CCU_OPENCODE_DB overrides; same relative path on every OS)."""
-    env = os.environ.get("CCU_OPENCODE_DB")
+    """opencode's SQLite file (TOKEN_BURN_OPENCODE_DB overrides; same relative path on every OS)."""
+    env = os.environ.get("TOKEN_BURN_OPENCODE_DB")
     if env:
         return Path(env)
     xdg = os.environ.get("XDG_DATA_HOME")

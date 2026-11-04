@@ -5,11 +5,11 @@ import re
 import shutil
 from pathlib import Path
 
-from ccu import paths
+from token_burn import paths
 
 CURSOR_EVENTS = ("subagentStart", "subagentStop")
-# Ours: "... ccu hook claude|cursor" (module or frozen exe). The original app's hooks are left alone so both can run side by side.
-_OURS = re.compile(r"(^|[\s/\\\"'])ccu[\w.\-]*[\"']?\s+hook\s+(claude|cursor)\b")
+# Ours: "... token-burn hook claude|cursor" (frozen exe) or "-m token_burn hook ..." (module). The original app's hooks are left alone so both can run side by side.
+_OURS = re.compile(r"(^|[\s/\\\"'])token[-_]burn[\w.\-]*[\"']?\s+hook\s+(claude|cursor)\b")
 _LEGACY = ()
 
 
@@ -42,7 +42,7 @@ def backup(path):
     path = Path(path)
     if not path.is_file():
         return None
-    bak = path.with_name(path.name + ".bak-ccu-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
+    bak = path.with_name(path.name + ".bak-token-burn-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S"))
     shutil.copy2(str(path), str(bak))
     return bak
 

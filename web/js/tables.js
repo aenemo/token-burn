@@ -1,6 +1,6 @@
 /* One shared table component: click-to-sort headers, search box, model and effort filters, no pagination.
  *
- * CCU.tables.create(host, opts) -> { update(rows), rerender(), state }
+ * TokenBurn.tables.create(host, opts) -> { update(rows), rerender(), state }
  * opts.columns: [{ key, label, num, v(row) -> raw sort value, text(row) -> string (default from v),
  *                  node(row) -> Node (optional rich cell), title(row) -> tooltip string (optional) }]
  * opts.search / opts.filters: show the toolbar parts (default true). Rows may carry .model and .effort.
@@ -8,7 +8,7 @@
  */
 (function () {
   'use strict';
-  var CCU = window.CCU = window.CCU || {};
+  var TokenBurn = window.TokenBurn = window.TokenBurn || {};
 
   function el(tag, cls, text) {
     var n = document.createElement(tag);
@@ -193,5 +193,5 @@
     };
   }
 
-  CCU.tables = { create: create };
+  TokenBurn.tables = { create: create };
 })();

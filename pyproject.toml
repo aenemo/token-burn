@@ -3,7 +3,7 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "ccu"
+name = "token-burn"
 version = "0.1.0"
 description = "Claude Cursor Usage: combined Claude Code and Cursor token usage dashboard"
 readme = "README.md"
@@ -14,15 +14,15 @@ dependencies = []
 keyring = ["keyring"]
 
 [project.scripts]
-ccu = "ccu.cli:main"
+token-burn = "token_burn.cli:main"
 
 [tool.setuptools]
-packages = ["ccu", "ccu.scheduler", "collector", "collector.adapters", "collector.plan", "ccu.web"]
+packages = ["token_burn", "token_burn.scheduler", "collector", "collector.adapters", "collector.plan", "token_burn.web"]
 py-modules = ["server"]
 include-package-data = true
 
 [tool.setuptools.package-dir]
-"ccu.web" = "web"
+"token_burn.web" = "web"
 
 [tool.setuptools.package-data]
-"ccu.web" = ["*.html", "css/*", "js/**/*", "vendor/*"]
+"token_burn.web" = ["*.html", "css/*", "js/**/*", "vendor/*"]

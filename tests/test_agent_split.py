@@ -11,7 +11,7 @@ START = "2026-01-01T00:00:00Z"
 
 def run(body):
     js = ("global.window={};eval(require('fs').readFileSync(process.argv[1],'utf8'));"
-          "var S=window.CCU.stats;var P={start:'%s'};"
+          "var S=window.TokenBurn.stats;var P={start:'%s'};"
           "var fr=S.frame(P,'30m',Date.parse('%s')+10*60000+5000);"
           "function mk(s){P.series=s;return S.seriesStats(P,fr);}%s" % (START, START, body))
     out = subprocess.run(["node", "-e", js, str(STATS)], capture_output=True, text=True, check=True).stdout

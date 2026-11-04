@@ -16,8 +16,8 @@ from collector.plan import claude_plan
 
 def _env(**kw):
     base = {k: v for k, v in os.environ.items()
-            if k not in ("CCU_DATA_DIR", "CURSOR_STATE_DB", "APPDATA", "LOCALAPPDATA",
-                         "XDG_CONFIG_HOME", "XDG_STATE_HOME", "CCU_CLAUDE_TOKEN", "CCU_PORT")}
+            if k not in ("TOKEN_BURN_DATA_DIR", "CURSOR_STATE_DB", "APPDATA", "LOCALAPPDATA",
+                         "XDG_CONFIG_HOME", "XDG_STATE_HOME", "TOKEN_BURN_CLAUDE_TOKEN", "TOKEN_BURN_PORT")}
     base.update(kw)
     return mock.patch.dict(os.environ, base, clear=True)
 
@@ -46,16 +46,16 @@ class TestPaths(unittest.TestCase):
 
     def test_data_dir(self):
         with mock.patch("sys.platform", "win32"), _env(LOCALAPPDATA="C:/L"):
-            self.assertEqual(util.default_data_dir(), Path("C:/L/ccu/data"))
+            self.assertEqual(util.default_data_dir(), Path("C:/L/token-burn/data"))
         with mock.patch("sys.platform", "darwin"), _env():
             self.assertEqual(util.default_data_dir(),
-                             Path.home() / "Library" / "Application Support" / "ccu" / "data")
+                             Path.home() / "Library" / "Application Support" / "token-burn" / "data")
         with mock.patch("sys.platform", "linux"):
             with _env(XDG_STATE_HOME="/s"):
-                self.assertEqual(util.default_data_dir(), Path("/s/ccu"))
+                self.assertEqual(util.default_data_dir(), Path("/s/token-burn"))
             with _env():
-                self.assertEqual(util.default_data_dir(), Path.home() / ".local" / "state" / "ccu")
-        with _env(CCU_DATA_DIR="/d"):
+                self.assertEqual(util.default_data_dir(), Path.home() / ".local" / "state" / "token-burn")
+        with _env(TOKEN_BURN_DATA_DIR="/d"):
             self.assertEqual(util.default_data_dir(), Path("/d"))
 
     @unittest.skipUnless(os.name == "posix", "POSIX permissions")
@@ -92,7 +92,7 @@ class TestCredentials(unittest.TestCase):
         self.addCleanup(pp.stop)
 
     def test_env_token_used_no_refresh(self):
-        os.environ["CCU_CLAUDE_TOKEN"] = "envtok"
+        os.environ["TOKEN_BURN_CLAUDE_TOKEN"] = "envtok"
         status, pools = claude_plan.fetch(None)
         self.assertEqual(status, "ok")
         self.assertEqual(self.calls[0].get_header("Authorization"), "Bearer envtok")
@@ -100,7 +100,7 @@ class TestCredentials(unittest.TestCase):
 
     def test_env_token_401_is_neutral(self):
         import urllib.error
-        os.environ["CCU_CLAUDE_TOKEN"] = "envtok"
+        os.environ["TOKEN_BURN_CLAUDE_TOKEN"] = "envtok"
         with mock.patch("urllib.request.urlopen",
                         side_effect=urllib.error.HTTPError("http://x", 401, "e", {}, None)):
             status, pools = claude_plan.fetch(None)
@@ -170,7 +170,7 @@ class TestCollectLoop(unittest.TestCase):
             (tmp / "projects").mkdir()
             self.assertTrue(collect.claude_installed())
             shutil.rmtree(tmp / "projects")
-            os.environ["CCU_CLAUDE_TOKEN"] = "t"
+            os.environ["TOKEN_BURN_CLAUDE_TOKEN"] = "t"
             self.assertTrue(collect.claude_installed())
 
 

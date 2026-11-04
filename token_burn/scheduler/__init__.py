@@ -9,11 +9,11 @@ import sys
 def get_backend(platform=None):
     platform = platform or sys.platform
     if platform.startswith("win"):
-        from ccu.scheduler import windows as m
+        from token_burn.scheduler import windows as m
     elif platform == "darwin":
-        from ccu.scheduler import macos as m
+        from token_burn.scheduler import macos as m
     else:
-        from ccu.scheduler import linux as m
+        from token_burn.scheduler import linux as m
     return m
 
 

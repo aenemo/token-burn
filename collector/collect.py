@@ -29,7 +29,7 @@ def claude_installed():
     """Claude Code is present once it has made its config folder (transcripts or sign-in)."""
     d = util.claude_dir()
     return ((d / "projects").is_dir() or (d / ".credentials.json").is_file()
-            or bool(os.environ.get("CCU_CLAUDE_TOKEN")))
+            or bool(os.environ.get("TOKEN_BURN_CLAUDE_TOKEN")))
 
 
 def cursor_installed():
