@@ -8,6 +8,8 @@ Start with `ccu status`. Logs are in the data directory (see [CONFIGURATION](CON
 | 403 from the server | The request is not from loopback, or the `Host` header is not `127.0.0.1`, `localhost` or `[::1]` with the port. Use `http://127.0.0.1:8421/` |
 | Page loads but charts are empty | No data yet. Wait a minute for the first collection, or run `ccu collect`. Check `CLAUDE_CONFIG_DIR` and `CURSOR_STATE_DB` |
 | Cursor shows no data | Cursor must be signed in. Confirm the `state.vscdb` path for your OS or set `CURSOR_STATE_DB`. Cursor's endpoints are unofficial and may have changed |
+| opencode shows no data | opencode must have created `~/.local/share/opencode/opencode.db` (or `$XDG_DATA_HOME/opencode/opencode.db`); set `CCU_OPENCODE_DB` if elsewhere. The status "unsupported opencode data format" means the database is not the v2 layout; "opencode database busy, will retry" clears by itself |
+| opencode cost shows US$0.00 | opencode records cost 0 for free or gateway models. Use token use instead. opencode has no plan data either |
 | Claude plan panel empty on macOS | Keychain access was denied. Re-run `ccu collect` and allow access, or set `CCU_CLAUDE_TOKEN` |
 | Claude plan panel empty on Linux or Windows | No `.credentials.json` in the Claude config folder. Sign in to Claude Code, or set `CCU_CLAUDE_TOKEN` |
 | Subagents show n/a | The hook is not registered, or Cursor was not restarted after `ccu install`. Run `ccu status` |

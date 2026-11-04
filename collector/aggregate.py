@@ -26,7 +26,7 @@ def allocate_costs(store, platform, rows):
     """Return (list of (row, cost, estimated), stats, rates).
 
     Claude: session cost shared by tokens, estimated at the model rate when the session has no cost yet.
-    Cursor: the row's own cost.
+    Cursor and opencode: the row's own cost.
     """
     stats = {"sessions_without_cost": 0, "sessions_estimated": 0, "estimated_cost_usd": 0.0}
     if platform != "claude":
@@ -204,6 +204,9 @@ def build_platform_payload(store, platform, now, status_info):
         meta.setdefault("files", 0)
     else:
         meta["subagent_tokens_attributed"] = attributed
+        if platform == "opencode":
+            # some opencode models record cost 0 while using tokens, so the frontend should not present $0 as fact
+            meta["cost_reported"] = not any(_tok(r) > 0 and not cost for r, cost, _ in allocated)
 
     return {"status": status_info.get("status", "ok"),
             "start": iso(start_min * 60), "minutes": MINUTES,

@@ -1,6 +1,6 @@
 # Install
 
-Supported: Windows 10 or later, macOS 12 or later, and Linux with systemd (cron is used where systemd user units are unavailable). Claude Code and Cursor need to be used on the same machine for their data to appear.
+Supported: Windows 10 or later, macOS 12 or later, and Linux with systemd (cron is used where systemd user units are unavailable). Claude Code, Cursor and opencode need to be used on the same machine for their data to appear.
 
 ## Route 1: PyInstaller zip
 
@@ -39,7 +39,7 @@ Add the `keyring` extra with `pip install ".[keyring]"`. The scheduler records t
 | macOS | launchd agents in `~/Library/LaunchAgents` |
 | Linux | systemd user timer and service, or a cron entry if systemd user units are unavailable |
 
-It also registers the Claude and Cursor subagent hooks. Use `ccu status` to check. The default port is 8421 so it can run beside the original app on 8420; override with CCU_PORT or ccu serve --port.
+It also registers the Claude and Cursor subagent hooks (opencode needs no hook; it is read from its own database). Use `ccu status` to check. The default port is 8421 so it can run beside the original app on 8420; override with CCU_PORT or ccu serve --port.
 
 On macOS, plan data for Claude comes from the Keychain item "Claude Code-credentials". The first read may show an access prompt. Without it, set `CCU_CLAUDE_TOKEN`.
 

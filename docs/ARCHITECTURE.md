@@ -1,12 +1,12 @@
 # Architecture
 
-Final design of the combined Claude and Cursor token usage dashboard. The review that led to it is in `docs/ARCHITECTURE-REVIEW.md`. The exact module signatures, table definitions and JSON shape are in `docs/DATA-CONTRACT.md`, which is the authority; this page explains how the parts fit together and does not repeat it.
+Final design of the combined Claude, Cursor and opencode token usage dashboard. The review that led to it is in `docs/ARCHITECTURE-REVIEW.md`. The exact module signatures, table definitions and JSON shape are in `docs/DATA-CONTRACT.md`, which is the authority; this page explains how the parts fit together and does not repeat it.
 
 ## Overview
 
 - Python 3.9+ standard library only (including `sqlite3`), vanilla JavaScript, and Chart.js 4.4.1 vendored in `web/vendor/`. No build step, no pip packages.
 - One collector runs every minute, writes a single `data/usage.json`, and a small loopback-only server serves it with the static page.
-- Claude is shown on the left and Cursor on the right. Both columns are produced by the same frontend code; only a small provider file (palette, labels, notes) differs.
+- Claude, Cursor and opencode are shown as columns from the left, each switchable on or off from the header and sharing the page width. All columns are produced by the same frontend code; only a small provider file (palette, labels, notes) differs.
 
 ## Components
 
@@ -55,16 +55,17 @@ flowchart LR
 
 | Component | File | Role |
 |---|---|---|
-| Entry point | `collector/collect.py` | Takes the lock, runs both adapters and both plan lookups, prunes, builds and writes `usage.json`. One platform failing never blocks the other |
+| Entry point | `collector/collect.py` | Takes the lock, runs all three adapters and the plan lookups, prunes, builds and writes `usage.json`. One platform failing never blocks the others |
 | Claude adapter | `collector/adapters/claude.py` | Reads transcripts incrementally, builds subagent runs from transcripts and the hook log |
 | Cursor adapter | `collector/adapters/cursor.py` | Reads the sign-in token, fetches usage events incrementally, reads the hook log, builds subagent runs |
-| Plan modules | `collector/plan/` | `claude_plan.py` (OAuth usage endpoint), `cursor_plan.py` (usage summary and fallbacks), `__init__.py` (shared throttle) |
+| opencode adapter | `collector/adapters/opencode.py` | Reads opencode's SQLite database read-only (v2 layout), builds usage rows and subagent runs from child sessions |
+| Plan modules | `collector/plan/` | `claude_plan.py` (OAuth usage endpoint), `cursor_plan.py` (usage summary and fallbacks), `opencode_plan.py` (no plan quota), `__init__.py` (shared throttle) |
 | Store | `collector/store.py` | SQLite in WAL mode: minute buckets, session totals, costs, subagent runs, plan samples, seen keys, key-value state |
 | Aggregation | `collector/aggregate.py` | Cost allocation, sparse series, subagent runs, plan block |
 | Effort | `collector/effort.py` | Normalises effort and splits Cursor model names |
 | Utilities | `collector/util.py` | Constants, atomic write, file lock, rotating log, time helpers |
 | Server | `server.py` | Loopback-only static and JSON server |
-| Frontend | `web/` | One page, two columns |
+| Frontend | `web/` | One page, up to three columns |
 | Hooks | `hooks/` | Claude and Cursor subagent recorders, both Python |
 | CLI and schedulers | `ccu/` | `ccu` command (install, uninstall, status, serve, collect, hook) and per-OS scheduler back ends (Task Scheduler on Windows, launchd on macOS, systemd user units or cron on Linux) |
 
@@ -126,7 +127,7 @@ Every record from either platform is a `UsageRecord` (see `collector/schema.py`)
 
 ## API shape
 
-`GET /api/usage.json` returns one document with a `claude` and a `cursor` block, each holding `status`, `start`, `minutes`, `series`, `subagent_runs`, `plan` and `meta`. Per-minute arrays are sparse (only minutes with data). The full field list, the loopback rules and the routes are in `docs/DATA-CONTRACT.md`.
+`GET /api/usage.json` returns one document with a `claude`, a `cursor` and an `opencode` block, each holding `status`, `start`, `minutes`, `series`, `subagent_runs`, `plan` and `meta`. Per-minute arrays are sparse (only minutes with data). The full field list, the loopback rules and the routes are in `docs/DATA-CONTRACT.md`.
 
 ## Cost allocation
 
@@ -137,6 +138,7 @@ Done in `aggregate.allocate_costs`.
   1. If the session and model have a `cost-state` value, each row gets `cost * row_tokens / session_tokens`.
   2. If not (a session still running), the row is estimated at `sum(cost) / sum(tokens)` for that model across costed sessions, and flagged as estimated. The totals are in `meta.sessions_estimated` and `meta.estimated_cost_usd`.
   3. If there is no rate either, cost is 0 and the session is counted in `meta.sessions_without_cost`.
+- **opencode.** The row's own cost, which is 0 for free or gateway models (`meta.cost_reported` is false if any row with tokens recorded no cost).
 - **Claude subagent cost.** A subagent's cost is its share of the session cost by tokens, so it is the session cost share, not a separate figure from Claude. When only the hook totals exist (transcript gone), it is estimated at the model rate.
 
 ## Plan throttle
@@ -159,14 +161,15 @@ This changes Cursor from every minute to about every 10 minutes (see `docs/CONFI
 
 | File | Role |
 |---|---|
-| `web/index.html` | Header (title, last updated, countdown, window selector, Tokens/Cost toggle) and two columns |
+| `web/index.html` | Header (title, last updated, countdown, window selector, Tokens/Cost toggle, provider toggle buttons) and up to three columns |
 | `web/js/format.js` | en-AU dates and numbers, token and US$ formatting |
 | `web/js/stats.js` | Shared window and statistics maths: window anchoring, per-series sums, primary and subagent split, cumulative series, plan stats. Both platforms use it, so both calculate alike |
 | `web/js/charts.js` | Chart.js setup for the usage chart and the plan chart, tick logic, theme colours, LTTB decimation |
 | `web/js/tables.js` | Shared sortable table with search and model/effort filters (no pagination) |
 | `web/js/providers/claude.js` | Warm palette, "Main session" label, Claude notes |
 | `web/js/providers/cursor.js` | Cool palette, "Main agent" label, Cursor notes (including the subagent n/a note) |
+| `web/js/providers/opencode.js` | opencode palette, labels and notes (zero-cost note, no plan data message) |
 | `web/js/app.js` | Refresh loop, controls, and the per-platform column |
 | `web/css/app.css` | Layout and light and dark theme variables |
 
-Each column, top to bottom: summary tiles, usage graph with model chips, plan usage (chart and table), Statistics table, Primary agent table, Subagents table. The two columns stack below 1100 px.
+Each column, top to bottom: summary tiles, usage graph with model chips, plan usage (chart and table), Statistics table, Primary agent table, Subagents table. The columns stack below 1100 px.

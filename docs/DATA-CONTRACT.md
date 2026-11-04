@@ -68,6 +68,7 @@ def iso(ts: float) -> str                    # "2026-10-21T03:51:03Z" (UTC)
 def parse_ts(s) -> float | None              # ISO 8601 (Z or offset) or epoch ms/s -> epoch seconds
 def claude_dir() -> Path                     # CLAUDE_CONFIG_DIR or ~/.claude
 def cursor_state_db() -> Path                # %APPDATA%\Cursor\User\globalStorage\state.vscdb
+def opencode_db() -> Path                    # CCU_OPENCODE_DB, else $XDG_DATA_HOME or ~/.local/share, then opencode/opencode.db (all OSes)
 ```
 
 ## `collector/schema.py`
@@ -75,7 +76,7 @@ def cursor_state_db() -> Path                # %APPDATA%\Cursor\User\globalStora
 ```python
 @dataclass
 class UsageRecord:
-    platform: str            # "claude" | "cursor"
+    platform: str            # "claude" | "cursor" | "opencode"
     agent_kind: str          # "primary" | "subagent"
     agent_id: str            # "" for primary; Claude agent id, or Cursor subagent conversation id
     session_id: str          # Claude sessionId, or Cursor conversationId ("" if unknown)
@@ -251,7 +252,15 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
   - For each usage row, `cost = session_cost[(session, model)] * row_tokens / session_tokens[(session, model)]`.
   - If the session has no cost yet, `cost = row_tokens * rate[model]`, where `rate = sum(cost) / sum(tokens)` over costed sessions of that model. These rows are `cost_estimated`, counted in `meta.sessions_estimated` and `meta.estimated_cost_usd`.
   - If there is no rate either, the cost is 0 and the row counts in `meta.sessions_without_cost`.
-- **Cursor:** the row's own `cost`.
+- **Cursor and opencode:** the row's own `cost`. For opencode `meta.cost_reported` is false if any row in the window has tokens but zero cost (an empty window is true); when false the page shows a note that some opencode models (free or gateway) report no cost, so their cost shows as US$0.00.
+
+**opencode** (`collector/adapters/opencode.py`)
+- Reads `opencode.db` strictly read-only (see `docs/CONFIGURATION.md` for the path). Only the v2 layout (`session_v2` and `session_message`) is supported; otherwise the status is "unsupported opencode data format". Credential tables and message text are never read.
+- Each `assistant` or `compaction` message with tokens is one usage row. `model` is `provider/model`, `effort` is the model variant, `output` includes reasoning tokens, and `cost` is the recorded cost (often 0). A message still streaming is skipped until it completes.
+- A session with a parent is a subagent (`agent_id` is the session id); subagent runs are built from these rows.
+- Incremental: kv `opencode:last_ts`, with a 2 hour overlap and a 30 day first read. De-duplicated by message id.
+- Plan: none (`collector/plan/opencode_plan.py`), so its plan block carries no pools.
+- Cost: the row's own cost, as for Cursor.
 
 ## API: `GET /api/usage.json` (file `USAGE_JSON`, rebuilt every minute by `collect.py`)
 
@@ -287,6 +296,10 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
     "cursor": {
       "...": "same shape",
       "meta": {"event_count": 207, "headless_requests": 21, "default_fallback_requests": 45, "truncated": false, "tokens_available": true, "subagent_tokens_attributed": false}
+    },
+    "opencode": {
+      "...": "same shape; plan has no pools",
+      "meta": {"requests": 480, "subagent_tokens_attributed": true, "cost_reported": false}
     }
   }
 }
@@ -312,9 +325,10 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
 - Each run, `collect.py` checks whether each client is on this PC:
   - **Claude:** `claude_dir()/projects` or `.credentials.json` exists.
   - **Cursor:** `cursor_state_db()` exists.
+  - **opencode:** `opencode_db()` exists.
 - A missing client is not collected or plan-checked, and its payload is just `{"installed": false, "status": "not installed"}`. Installed platforms carry `"installed": true`.
-- The page hides that platform's column and shows the other one full width. If neither is installed it shows a notice.
-- Once a client is installed, the next run collects it: Claude from the start of its transcripts, Cursor with a 30-day first fetch. Its column appears on the next page refresh, with no reload needed.
+- The page disables that provider's header toggle and hides its column; the visible columns share the width. If none is installed it shows a notice.
+- Once a client is installed, the next run collects it: Claude from the start of its transcripts, Cursor with a 30-day first fetch, opencode with a 30-day first read. Its column appears on the next page refresh, with no reload needed.
 
 ### Platform errors
 - If a platform fails entirely, its `status` holds the message. Its other fields keep the last data in the store.
@@ -340,4 +354,4 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
   - `loIdx = endIdx - W + 1`
 - **Charts:** cumulative lines per series inside the window, with Chart.js LTTB decimation at 500 samples.
 - **Refresh:** the page fetches `/api/usage.json` every 60 s with `cache: 'no-store'` and shows a "Next refresh in" countdown.
-- **localStorage:** the window and metric are remembered in `ccu.window` and `ccu.metric`, accessed inside try/catch.
+- **localStorage:** the window and metric are remembered in `ccu.window` and `ccu.metric`, and the visible providers in `ccu.providers`, accessed inside try/catch.

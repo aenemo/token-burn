@@ -10,7 +10,8 @@ a = Analysis(
     datas=[(os.path.join(ROOT, "web"), "web")],
     hiddenimports=[
         "collector", "collector.collect", "collector.util", "collector.adapters",
-        "collector.adapters.claude", "collector.adapters.cursor", "collector.plan",
+        "collector.adapters.claude", "collector.adapters.cursor", "collector.adapters.opencode",
+        "collector.plan", "collector.plan.opencode_plan",
         "server", "ccu.cli", "ccu.scheduler",
         "ccu.scheduler.windows", "ccu.scheduler.macos", "ccu.scheduler.linux",
     ],

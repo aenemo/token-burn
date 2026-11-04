@@ -206,6 +206,15 @@ def claude_dir():
     return Path(env) if env else Path.home() / ".claude"
 
 
+def opencode_db():
+    """opencode's SQLite file (CCU_OPENCODE_DB overrides; same relative path on every OS)."""
+    env = os.environ.get("CCU_OPENCODE_DB")
+    if env:
+        return Path(env)
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return (Path(xdg) if xdg else Path.home() / ".local" / "share") / "opencode" / "opencode.db"
+
+
 def cursor_state_db():
     """Cursor's state.vscdb for this OS (CURSOR_STATE_DB overrides)."""
     env = os.environ.get("CURSOR_STATE_DB")

@@ -1,5 +1,5 @@
-/* App shell: header controls, refresh loop and the per-platform column (identical for Claude and Cursor).
- * Global API: window.CCU = { fmt, stats, charts, tables, providers: { claude, cursor }, app }.
+/* App shell: header controls, refresh loop and the per-platform column (identical for Claude, Cursor and opencode).
+ * Global API: window.CCU = { fmt, stats, charts, tables, providers: { claude, cursor, opencode }, app }.
  */
 (function () {
   'use strict';
@@ -7,7 +7,7 @@
   var F = CCU.fmt, S = CCU.stats, C = CCU.charts, T = CCU.tables;
 
   var REFRESH_MS = 60000, PLAN_REFRESH_S = 600; // fallbacks; usage.json token_refresh_s / plan_refresh_s override
-  var LS_WIN = 'ccu.window', LS_METRIC = 'ccu.metric';
+  var LS_WIN = 'ccu.window', LS_METRIC = 'ccu.metric', LS_PROV = 'ccu.providers';
   var LS_GRAPH = 'ccu.graph.', LS_SPAN = 'ccu.span.', LS_AGENTS = 'ccu.agents.';
   var HAVE_ROLLING = !!(S.SPANS && S.rollingSeries && S.rollingTotal && S.rollingInfo && S.spanDef);
   var DEFAULT_SPAN = HAVE_ROLLING ? S.DEFAULT_SPAN : null;
@@ -18,6 +18,11 @@
     var sm = localStorage.getItem(LS_METRIC);
     if (sm === 'tokens' || sm === 'cost') state.metric = sm;
   } catch (e) { /* storage unavailable */ }
+  var prefs = {}; // provider id -> false when the user turned it off (absent means on)
+  try {
+    var sp = JSON.parse(localStorage.getItem(LS_PROV) || 'null');
+    if (sp && typeof sp === 'object') for (var pk in sp) if (sp[pk] === false) prefs[pk] = false;
+  } catch (e) { /* storage unavailable or invalid */ }
 
   function $(id) { return document.getElementById(id); }
   function el(tag, cls, text) {
@@ -45,7 +50,7 @@
     this.last = null; // last computed view
     this.graph = 'cumulative'; // 'cumulative' | 'rolling'
     this.span = DEFAULT_SPAN;
-    this.agents = 'all'; // 'all' | 'split' (Claude only)
+    this.agents = 'all'; // 'all' | 'split' (providers with agentSplit)
     this.baseMap = {};   // derived series key -> base model key (colour lookup)
     this.canSplit = !!(provider.agentSplit && typeof S.agentSplitRows === 'function');
     try {
@@ -447,7 +452,11 @@
     // plan
     var banner = this.q('.plan-banner');
     banner.textContent = '';
-    if (plan.status && plan.status !== 'ok') banner.appendChild(el('div', 'banner warn', 'Plan usage status: ' + plan.status));
+    // Providers without a plan quota (opencode) show a message instead of an empty chart and table.
+    var noPlan = !!P.planUnavailable && !plan.pools.length;
+    this.q('.plan-box').hidden = noPlan; this.q('.plan-table').hidden = noPlan; this.q('.plan-lookup').hidden = noPlan;
+    if (noPlan) banner.appendChild(el('div', 'empty', 'No plan data from ' + P.name + '. It has no usage limit to chart.'));
+    else if (plan.status && plan.status !== 'ok') banner.appendChild(el('div', 'banner warn', 'Plan usage status: ' + plan.status));
     var markers = [];
     if (P.resetMarkers) {
       var rt = (plat.plan && plat.plan.reset_times) || {};
@@ -460,7 +469,7 @@
         });
       });
     }
-    if (this.planChart) C.updatePlan(this.planChart, plan, fr, function (i) { return self.planColor(i); }, this.root, markers);
+    if (this.planChart && !noPlan) C.updatePlan(this.planChart, plan, fr, function (i) { return self.planColor(i); }, this.root, markers);
     this.planTable.update(plan.pools.map(function (p, i) { p.index = i; return p; }));
     this.q('.plan-lookup').textContent = 'Last lookup: ' + (plan.last_lookup ? F.dtIsoS(plan.last_lookup) : 'n/a') +
       '. Next lookup: ' + (plan.next_lookup ? F.dtIsoS(plan.next_lookup) : 'n/a') + '.';
@@ -484,6 +493,10 @@
       b.style.opacity = (self.selected == null || on) ? '1' : '0.5';
     });
   };
+  Column.prototype.resizeCharts = function () {
+    if (this.useChart) this.useChart.resize();
+    if (this.planChart) this.planChart.resize();
+  };
   Column.prototype.refreshTheme = function () {
     if (this.useChart) this.useChart.update('none');
     if (this.planChart) this.planChart.update('none');
@@ -496,25 +509,78 @@
     box.textContent = '';
     if (msg) box.appendChild(el('div', 'banner err', msg));
   }
-  function render() {
-    if (!state.data) return;
-    var plats = state.data.platforms || {};
-    // A platform whose client is not installed on this PC is hidden; its column
-    // appears on its own once the collector starts reporting it.
-    var shown = 0;
+  function savePrefs() {
+    try { localStorage.setItem(LS_PROV, JSON.stringify(prefs)); } catch (e) { /* ignore */ }
+  }
+  // Applies the provider toggle state (aria-pressed, column visibility, column count). It works before the
+  // first data load too: with no data every provider is treated as available. Returns the counts.
+  function applyToggles() {
+    var plats = (state.data && state.data.platforms) || {};
+    var known = !!state.data;
+    // A platform whose client is not installed on this PC (or missing from an older usage.json)
+    // is hidden and its toggle disabled; it appears on its own once the collector reports it.
+    var shown = 0, avail = 0;
     columns.forEach(function (c) {
       var plat = plats[c.p.id];
-      var installed = !!plat && plat.installed !== false;
+      var installed = known ? (!!plat && plat.installed !== false) : true;
+      var on = installed && prefs[c.p.id] !== false;
       var sec = $('col-' + c.p.id);
-      if (sec) sec.hidden = !installed;
-      if (installed) { shown++; c.render(plat); }
+      if (sec) sec.hidden = !on;
+      var tb = document.querySelector('#providers [data-prov="' + c.p.id + '"]');
+      if (tb) {
+        var why = $('prov-why-' + c.p.id);
+        if (!why) {
+          why = el('span', 'sr-only');
+          why.id = 'prov-why-' + c.p.id;
+          why.hidden = true;
+          tb.parentNode.insertBefore(why, tb.nextSibling);
+        }
+        if (installed) {
+          tb.removeAttribute('aria-disabled');
+          tb.removeAttribute('aria-describedby');
+          tb.removeAttribute('title');
+          why.textContent = '';
+        } else {
+          why.textContent = c.p.name + ' was not found on this PC';
+          tb.setAttribute('aria-disabled', 'true');
+          tb.setAttribute('aria-describedby', why.id);
+          tb.title = why.textContent;
+        }
+        tb.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+      if (installed) avail++;
+      if (on) shown++;
     });
     var main = document.querySelector('main.cols');
-    if (main) main.classList.toggle('single', shown === 1);
+    if (main) {
+      main.style.setProperty('--n', String(Math.max(1, shown)));
+      main.hidden = shown === 0;
+    }
+    return { shown: shown, avail: avail };
+  }
+  // Draws only the visible columns (hidden ones keep their state and are redrawn from state.data when shown).
+  function render() {
+    var n = applyToggles();
+    if (!state.data) return;
+    var plats = state.data.platforms || {};
+    var shown = n.shown, avail = n.avail;
+    columns.forEach(function (c) {
+      var plat = plats[c.p.id];
+      if (plat && plat.installed !== false && prefs[c.p.id] !== false) c.render(plat);
+    });
     var none = $('noclients');
-    if (none) none.hidden = shown !== 0;
+    if (none) none.hidden = avail !== 0;
+    var off = $('alloff');
+    if (off) off.hidden = !(avail > 0 && shown === 0);
     var g = Date.parse(state.data.generated_at);
     $('updated').textContent = isNaN(g) ? 'n/a' : F.dtS(g);
+  }
+  // After the visible column count changes the chart boxes change width: resize once layout has settled.
+  function resizeCharts() {
+    var run = function () {
+      columns.forEach(function (c) { if (!$('col-' + c.p.id).hidden) c.resizeCharts(); });
+    };
+    if (window.requestAnimationFrame) window.requestAnimationFrame(run); else run();
   }
 
   function buildControls() {
@@ -532,6 +598,16 @@
         render();
       });
       box.appendChild(b);
+    });
+    Array.prototype.forEach.call(document.querySelectorAll('#providers [data-prov]'), function (b) {
+      b.addEventListener('click', function () {
+        var id = b.getAttribute('data-prov');
+        if (b.getAttribute('aria-disabled') === 'true') return;
+        prefs[id] = prefs[id] === false ? true : false;
+        savePrefs();
+        render();
+        resizeCharts();
+      });
     });
     function setMetric(m) {
       state.metric = m;
@@ -570,7 +646,11 @@
 
   function start() {
     buildControls();
-    columns = [new Column(CCU.providers.claude, $('col-claude')), new Column(CCU.providers.cursor, $('col-cursor'))];
+    columns = [
+      new Column(CCU.providers.claude, $('col-claude')),
+      new Column(CCU.providers.cursor, $('col-cursor')),
+      new Column(CCU.providers.opencode, $('col-opencode'))
+    ];
     setInterval(function () {
       var s = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000));
       $('countdown').textContent = state.nextAt ? s + ' s' : '-';

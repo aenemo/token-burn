@@ -1,6 +1,6 @@
 # Configuration
 
-There is no settings file. Behaviour is set by environment variables, the `--port` option of `ccu serve`, constants in `collector/util.py` and two browser preferences.
+There is no settings file. Behaviour is set by environment variables, the `--port` option of `ccu serve`, constants in `collector/util.py` and browser preferences.
 
 ## Port
 
@@ -18,6 +18,8 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 | `CCU_PORT` | Dashboard port | Overridden by `--port` |
 | `CCU_CLAUDE_TOKEN` | Claude OAuth access token used for plan lookups | Highest priority in the credential resolver. Falls back to the optional `keyring` extra, then Claude's own credentials file or macOS Keychain |
 | `CURSOR_STATE_DB` | Path to Cursor's `state.vscdb` | Overrides the per-OS default location |
+| `CCU_OPENCODE_DB` | Path to opencode's `opencode.db` | Overrides the default location below |
+| `XDG_DATA_HOME` | Base folder for opencode's data | Honoured on every OS when `CCU_OPENCODE_DB` is not set |
 | `CLAUDE_CONFIG_DIR` | Claude's folder (projects, credentials, settings) instead of `~/.claude` | Same variable Claude Code uses. `ccu install` honours it when registering the hook |
 
 ## Data directory by OS
@@ -37,6 +39,14 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 | Linux | `~/.config/Cursor/User/globalStorage/state.vscdb` |
 
 Set `CURSOR_STATE_DB` to override.
+
+## opencode database location
+
+opencode's data is a read-only SQLite file at `~/.local/share/opencode/opencode.db` on every OS (including Windows and macOS). If `XDG_DATA_HOME` is set, the file is `$XDG_DATA_HOME/opencode/opencode.db`. Set `CCU_OPENCODE_DB` to override both. opencode counts as installed once this file exists.
+
+Only the v2 layout (`session_v2` and `session_message` tables) is supported; any other layout shows the status "unsupported opencode data format". The file is opened read-only and never written, and opencode's credential tables are never read. Per request, the model label is `provider/model`, the effort is the model variant, reasoning tokens are added to output, compaction rows are included, and a child session counts as a subagent. opencode has no plan quota, so no plan lookup is made.
+
+Cost: opencode records cost 0 for free or gateway models, so cost can read US$0.00. The page shows a note when any model with token use reported no cost (`meta.cost_reported` is false). Token use is the figure to rely on. Totals match opencode's own session totals to within about 0.4 percent (a known gap, probably rows still in progress, which are counted only once they complete, or after 24 hours if abandoned).
 
 ## Claude plan credentials
 
@@ -73,15 +83,15 @@ The page offers 7 windows. The default is 12 hours.
 | 7d | 7 days | 10,080 |
 | 30d | 30 days | 43,200 |
 
-A window is anchored to the browser clock: `endIdx = floor((now - start) / 60000)`, `loIdx = endIdx - W + 1`. One window selector drives both columns.
+A window is anchored to the browser clock: `endIdx = floor((now - start) / 60000)`, `loIdx = endIdx - W + 1`. One window selector drives all visible columns.
 
 ## Usage graph modes
 
-Each platform column has its own graph mode switch. **Cumulative** is the default and draws running totals across the selected window. **Rolling total** draws, for each point in the window, the usage over the preceding period, one line per model and effort plus a bold Total line (not a selectable chip). The "Total over the last" picker offers 30 min, 1 hour, 6 hours, 12 hours, 24 hours (default), 7 days and 30 days, and is hidden in Cumulative mode. Switching mode or period redraws from the data already loaded, with no refetch. Clicking a model chip (or its chart line) highlights that series and shows a small callout over the chart with its usage for the selected main time period (tokens or US$ following the metric toggle), plus, in Rolling total mode, the latest rolling total. Clicking again clears it.
+Each platform column (Claude, Cursor and opencode) has its own graph mode switch. **Cumulative** is the default and draws running totals across the selected window. **Rolling total** draws, for each point in the window, the usage over the preceding period, one line per model and effort plus a bold Total line (not a selectable chip). The "Total over the last" picker offers 30 min, 1 hour, 6 hours, 12 hours, 24 hours (default), 7 days and 30 days, and is hidden in Cumulative mode. Switching mode or period redraws from the data already loaded, with no refetch. Clicking a model chip (or its chart line) highlights that series and shows a small callout over the chart with its usage for the selected main time period (tokens or US$ following the metric toggle), plus, in Rolling total mode, the latest rolling total. Clicking again clears it.
 
 History is limited to 30 days. When the window reaches back before the first stored data, the earliest points sum less than a full period, and a note under the chart gives the date and time history starts.
 
-The Claude column also has an **Agents** switch beside the graph mode. **All** (default) draws one line per model and effort; **Split** draws two, solid for the primary agent and dashed for subagents, in the same colour, in both graph modes. The Rolling total line stays the total of all usage, and Cursor has no switch because it reports no subagent tokens. The Claude column's summary row also shows Primary agent, Subagents and Cache hits tiles for the selected window; Cache hits shows cache read tokens and the hit rate, cache read divided by (input + cache read + cache write), and is hidden when usage.json has no `cache_read` data. The Cursor column's summary row also shows a Cache hits tile, calculated the same way.
+The Claude and opencode columns also have an **Agents** switch beside the graph mode. **All** (default) draws one line per model and effort; **Split** draws two, solid for the primary agent and dashed for subagents, in the same colour, in both graph modes. The Rolling total line stays the total of all usage, and Cursor has no switch because it reports no subagent tokens. The opencode column's summary row also shows Primary agent, Subagents and Cache hits tiles. The Claude column's summary row also shows Primary agent, Subagents and Cache hits tiles for the selected window; Cache hits shows cache read tokens and the hit rate, cache read divided by (input + cache read + cache write), and is hidden when usage.json has no `cache_read` data. The Cursor column's summary row also shows a Cache hits tile, calculated the same way.
 
 ## localStorage keys
 
@@ -91,8 +101,9 @@ Per browser, per origin, wrapped in try/catch so a blocked store never breaks th
 |---|---|---|
 | `ccu.window` | one of the window keys | Remembered window |
 | `ccu.metric` | `tokens` or `cost` | Remembered Tokens/Cost toggle |
-| `ccu.agents.<platform>` | `all` or `split` | Claude usage graph primary/subagent split |
-| `ccu.graph.<platform>` | `cumulative` or `rolling` | Usage graph mode for `claude` or `cursor` |
+| `ccu.agents.<platform>` | `all` or `split` | Claude and opencode usage graph primary/subagent split |
+| `ccu.graph.<platform>` | `cumulative` or `rolling` | Usage graph mode for `claude`, `cursor` or `opencode` |
+| `ccu.providers` | list of visible providers | Which columns the header toggle buttons show. Uninstalled providers are disabled |
 | `ccu.span.<platform>` | one of the span keys (`30m` to `30d`) | Rolling total period for that column |
 
 A different port is a different origin, so preferences do not carry across ports.

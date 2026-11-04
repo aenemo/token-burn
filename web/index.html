@@ -3,19 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Claude and Cursor Token Usage</title>
+<title>Claude, Cursor and opencode Token Usage</title>
 <link rel="stylesheet" href="/web/css/app.css">
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>Claude and Cursor Token Usage</h1>
+    <h1>Claude, Cursor and opencode Token Usage</h1>
     <div class="meta">
       <span>Last updated: <span id="updated">loading</span></span>
       <span>Next refresh in: <span id="countdown">-</span></span>
     </div>
     <div class="controls">
       <div class="windows" id="windows" role="group" aria-label="Time window"></div>
+      <div class="toggle providers" id="providers" role="group" aria-label="Providers shown">
+        <button class="btn prov" type="button" data-prov="claude" aria-pressed="true">Claude</button>
+        <button class="btn prov" type="button" data-prov="cursor" aria-pressed="true">Cursor</button>
+        <button class="btn prov" type="button" data-prov="opencode" aria-pressed="true">opencode</button>
+      </div>
       <div class="toggle" role="group" aria-label="Metric">
         <button class="btn" id="mTokens" type="button" aria-pressed="true">Tokens</button>
         <button class="btn" id="mCost" type="button" aria-pressed="false">Cost (USD)</button>
@@ -26,10 +31,12 @@
 
   <div id="errbox"></div>
 
-  <div id="noclients" class="banner warn" hidden>Neither Claude Code nor Cursor was found on this PC. Install and sign in to either one and its usage appears here within a minute or two.</div>
+  <div id="noclients" class="banner warn" hidden>None of Claude Code, Cursor or opencode was found on this PC. Install and sign in to any of them and its usage appears here within a minute or two.</div>
+  <div id="alloff" class="banner warn" hidden>Turn on a provider above to see its usage.</div>
   <main class="cols">
     <section id="col-claude"></section>
     <section id="col-cursor"></section>
+    <section id="col-opencode"></section>
   </main>
 </div>
 
@@ -40,6 +47,7 @@
 <script src="/web/js/tables.js"></script>
 <script src="/web/js/providers/claude.js"></script>
 <script src="/web/js/providers/cursor.js"></script>
+<script src="/web/js/providers/opencode.js"></script>
 <script src="/web/js/app.js"></script>
 </body>
 </html>

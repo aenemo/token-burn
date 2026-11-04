@@ -34,7 +34,7 @@ If `sqlite3` is not installed, run `ccu uninstall` and copy the data folder. Res
 ## Security notes
 
 - The server binds to `127.0.0.1` only and rejects non-loopback clients and unexpected `Host` headers.
-- Credential policy is read-only: Claude's credentials file, the macOS Keychain item and Cursor's `state.vscdb` are read, never written or refreshed.
+- Credential policy is read-only: Claude's credentials file, the macOS Keychain item and Cursor's `state.vscdb` are read, never written or refreshed; opencode's `opencode.db` is opened read-only and its credential tables are never read.
 - `CCU_CLAUDE_TOKEN` in a user environment variable is stored in clear text by the OS. Prefer the keyring extra or the vendor's own credentials.
 - Do not expose the port with a proxy or tunnel. There is no authentication.
 

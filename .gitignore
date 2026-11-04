@@ -6,5 +6,5 @@ __pycache__/
 *.egg-info/
 .venv/
 *.spec.bak
-
+HANDOFF-NOTES.md
 .claude/

@@ -35,9 +35,48 @@ class FrontendContract(unittest.TestCase):
     def test_column_order(self):
         html = read("index.html")
         self.assertLess(html.index('id="col-claude"'), html.index('id="col-cursor"'))
+        self.assertLess(html.index('id="col-cursor"'), html.index('id="col-opencode"'))
         app = read("js/app.js")
         self.assertLess(app.index("providers.claude, $('col-claude')"),
                         app.index("providers.cursor, $('col-cursor')"))
+        self.assertLess(app.index("providers.cursor, $('col-cursor')"),
+                        app.index("providers.opencode, $('col-opencode')"))
+
+    def test_opencode_files_and_title(self):
+        html = read("index.html")
+        self.assertIn('<script src="/web/js/providers/opencode.js"></script>', html)
+        self.assertLess(html.index("providers/cursor.js"), html.index("providers/opencode.js"))
+        self.assertLess(html.index("providers/opencode.js"), html.index("js/app.js"))
+        self.assertIn("<title>Claude, Cursor and opencode Token Usage</title>", html)
+        self.assertIn("<h1>Claude, Cursor and opencode Token Usage</h1>", html)
+        self.assertIn("Claude Code, Cursor or opencode", html)
+        self.assertIn("Turn on a provider above to see its usage.", html)
+        oc = read("js/providers/opencode.js")
+        self.assertRegex(oc, r"id:\s*'opencode'")
+        self.assertRegex(oc, r"agentSplit:\s*true")
+        self.assertRegex(oc, r"summaryTiles:\s*true")
+        self.assertRegex(oc, r"cacheHitsTile:\s*true")
+        self.assertRegex(oc, r"planUnavailable:\s*true")
+        self.assertNotIn("resetMarkers", oc)
+        self.assertIn("meta.cost_reported === false", oc)
+        self.assertNotIn("planUnavailable", read("js/providers/claude.js"))
+        self.assertNotIn("planUnavailable", read("js/providers/cursor.js"))
+
+    def test_provider_toggles(self):
+        html = read("index.html")
+        for p in ("claude", "cursor", "opencode"):
+            self.assertRegex(html, r'data-prov="%s" aria-pressed="true"' % p)
+        app = read("js/app.js")
+        self.assertIn("'ccu.providers'", app)
+        self.assertIn("localStorage.setItem(LS_PROV", app)
+        self.assertIn("setProperty('--n'", app)
+        self.assertIn("function applyToggles", app)
+        self.assertIn("aria-disabled", app)
+        self.assertIn("aria-describedby", app)
+        self.assertRegex(app, r"function render\(\) \{\s*var n = applyToggles\(\);")
+        css = read("css/app.css")
+        self.assertIn("repeat(var(--n, 3), minmax(0, 1fr))", css)
+        self.assertIn(".col-opencode", css)
 
     def test_no_inline_script_or_handlers(self):
         html = read("index.html")
@@ -127,7 +166,6 @@ class FrontendContract(unittest.TestCase):
         self.assertIn("grid-template-rows: subgrid", css)
         self.assertIn("grid-row: span 7", css)
         self.assertIn("@media (min-width: 1101px)", css)
-        self.assertIn(".cols:not(.single)", css)
         self.assertIn("@media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }", css)
         html = read("index.html")
         self.assertLess(html.index('id="col-claude"'), html.index('id="col-cursor"'))

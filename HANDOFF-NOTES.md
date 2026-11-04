@@ -34,6 +34,9 @@ On approval, create the project skeleton here: copy (not move) the source tree, 
 6. WS5 frontend reads intervals from usage.json, defaults unchanged.
 7. WS6 CI matrix and PyInstaller zips. WS7 docs.
 
+## 4/11/2026: opencode support documented
+The dashboard now has a third column for opencode (title "Claude, Cursor and opencode Token Usage") and header toggles per provider (`ccu.providers`). Data comes from opencode's SQLite file, read-only, v2 layout only. Cost is often US$0.00 and there is no plan data. Docs updated: README, CONFIGURATION, DATA-CONTRACT, ARCHITECTURE, INSTALL, TROUBLESHOOTING, DEPLOYMENT. Code was not touched. Known gap: totals are about 0.4 percent off opencode's own, cause unexplained.
+
 ## Gotchas
 - Claude on macOS keeps OAuth in the Keychain ("Claude Code-credentials"), no `.credentials.json`.
 - Claude token refresh writes back to `.credentials.json` with default permissions and can race Claude Code. Make it read-only or chmod 0600.

@@ -18,6 +18,8 @@
   --claude-soft: rgba(217, 119, 6, 0.12);
   --cursor: #4f46e5;
   --cursor-soft: rgba(79, 70, 229, 0.10);
+  --opencode: #0d9488;
+  --opencode-soft: rgba(13, 148, 136, 0.12);
   --pad: 16px;
 }
 @media (prefers-color-scheme: dark) {
@@ -40,6 +42,8 @@
     --claude-soft: rgba(245, 158, 11, 0.14);
     --cursor: #818cf8;
     --cursor-soft: rgba(129, 140, 248, 0.14);
+    --opencode: #2dd4bf;
+    --opencode-soft: rgba(45, 212, 191, 0.14);
   }
 }
 * { box-sizing: border-box; }
@@ -64,6 +68,15 @@ button.btn {
 }
 button.btn:hover { border-color: var(--accent); }
 button.btn[aria-pressed="true"] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+/* provider show/hide toggles: filled in the provider colour when on, dashed and muted when off */
+button.prov { --pc: var(--accent); border-color: var(--pc); }
+button.prov[data-prov="claude"] { --pc: var(--claude); }
+button.prov[data-prov="cursor"] { --pc: var(--cursor); }
+button.prov[data-prov="opencode"] { --pc: var(--opencode); }
+button.prov:hover { border-color: var(--pc); }
+button.prov[aria-pressed="true"] { background: var(--pc); border-color: var(--pc); color: #fff; }
+button.prov[aria-pressed="false"] { background: transparent; color: var(--muted); border-style: dashed; }
+button.prov:disabled, button.prov[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; border-style: dotted; }
 button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 .banner { border-radius: 8px; padding: 6px 10px; margin: 0 0 8px; font-size: 13px; }
@@ -71,27 +84,28 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .banner.err { background: var(--err-bg); color: var(--err-fg); }
 #errbox:not(:empty) { margin-top: 12px; }
 
-/* two equal columns */
-.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 14px; align-items: start; }
+/* Visible columns share the width equally: --n is the visible column count (set by app.js). */
+.cols { display: grid; grid-template-columns: repeat(var(--n, 3), minmax(0, 1fr)); gap: 16px; margin-top: 14px; align-items: start; }
 .cols > section { min-width: 0; }
-.cols.single { grid-template-columns: 1fr; }
+.cols[hidden], .cols > section[hidden] { display: none; }
 @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
 
-/* Align corresponding blocks (head, tiles, 5 cards) of the two columns: each
-   column section spans the same 7 row tracks via subgrid. Only when two columns
-   sit side by side; .single and the stacked layout keep the plain flow. */
+/* Align corresponding blocks (head, tiles, 5 cards) of the columns: each visible
+   column section spans the same 7 row tracks via subgrid, so any visible subset
+   lines up. The stacked layout keeps the plain flow. */
 @supports (grid-template-rows: subgrid) {
   @media (min-width: 1101px) {
-    .cols:not(.single) { column-gap: 16px; row-gap: 0; align-items: stretch; }
-    .cols:not(.single) > section:not([hidden]) {
+    .cols { column-gap: 16px; row-gap: 0; align-items: stretch; }
+    .cols > section:not([hidden]) {
       display: grid; grid-template-rows: subgrid; grid-row: span 7; row-gap: 0; align-items: stretch;
     }
-    .cols:not(.single) > section .tiles { align-content: start; }
+    .cols > section .tiles { align-content: start; }
   }
 }
 
 .col { --col: var(--claude); --col-soft: var(--claude-soft); }
 .col-cursor { --col: var(--cursor); --col-soft: var(--cursor-soft); }
+.col-opencode { --col: var(--opencode); --col-soft: var(--opencode-soft); }
 .plat-head {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 14px; border-radius: 10px; background: var(--col-soft); border-left: 5px solid var(--col);

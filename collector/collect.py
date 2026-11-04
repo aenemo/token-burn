@@ -1,7 +1,7 @@
 """Collector entry point: python -m collector.collect [--backfill].
 
-Runs both platform adapters, the throttled plan lookups, prunes old rows and
-rewrites USAGE_JSON atomically. One platform failing never blocks the other.
+Runs the Claude, Cursor and opencode adapters, the throttled plan lookups, prunes old rows
+and rewrites USAGE_JSON atomically. One platform failing never blocks the others.
 """
 import argparse
 import os
@@ -18,9 +18,11 @@ def _platforms():
     # Imported lazily so a broken module only fails its own platform.
     from collector.adapters import claude as claude_adapter
     from collector.adapters import cursor as cursor_adapter
-    from collector.plan import claude_plan, cursor_plan
+    from collector.adapters import opencode as opencode_adapter
+    from collector.plan import claude_plan, cursor_plan, opencode_plan
     return [("claude", claude_adapter.collect, claude_plan.fetch, claude_installed),
-            ("cursor", cursor_adapter.collect, cursor_plan.fetch, cursor_installed)]
+            ("cursor", cursor_adapter.collect, cursor_plan.fetch, cursor_installed),
+            ("opencode", opencode_adapter.collect, opencode_plan.fetch, opencode_installed)]
 
 
 def claude_installed():
@@ -33,6 +35,11 @@ def claude_installed():
 def cursor_installed():
     """Cursor is present once it has created its state database."""
     return util.cursor_state_db().is_file()
+
+
+def opencode_installed():
+    """opencode is present once it has created its database."""
+    return util.opencode_db().is_file()
 
 
 def _is_installed(entry, log):
@@ -131,7 +138,7 @@ def run_loop(interval=util.TOKEN_REFRESH_S, run_fn=None, sleep=time.sleep, max_i
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Collect Claude and Cursor token usage.")
+    ap = argparse.ArgumentParser(description="Collect Claude, Cursor and opencode token usage.")
     ap.add_argument("--backfill", action="store_true", help="re-read the full 30 days")
     ap.add_argument("--loop", action="store_true",
                     help="keep running, collecting every %d seconds" % util.TOKEN_REFRESH_S)
