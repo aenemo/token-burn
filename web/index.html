@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude and Cursor Token Usage</title>
+<link rel="stylesheet" href="/web/css/app.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Claude and Cursor Token Usage</h1>
+    <div class="meta">
+      <span>Last updated: <span id="updated">loading</span></span>
+      <span>Next refresh in: <span id="countdown">-</span></span>
+    </div>
+    <div class="controls">
+      <div class="windows" id="windows" role="group" aria-label="Time window"></div>
+      <div class="toggle" role="group" aria-label="Metric">
+        <button class="btn" id="mTokens" type="button" aria-pressed="true">Tokens</button>
+        <button class="btn" id="mCost" type="button" aria-pressed="false">Cost (USD)</button>
+      </div>
+    </div>
+    <p class="note hdr-note">Viewing or refreshing this dashboard does not spend model tokens. It only reads usage data.</p>
+  </header>
+
+  <div id="errbox"></div>
+
+  <div id="noclients" class="banner warn" hidden>Neither Claude Code nor Cursor was found on this PC. Install and sign in to either one and its usage appears here within a minute or two.</div>
+  <main class="cols">
+    <section id="col-claude"></section>
+    <section id="col-cursor"></section>
+  </main>
+</div>
+
+<script src="/web/vendor/chart.umd.min.js"></script>
+<script src="/web/js/format.js"></script>
+<script src="/web/js/stats.js"></script>
+<script src="/web/js/charts.js"></script>
+<script src="/web/js/tables.js"></script>
+<script src="/web/js/providers/claude.js"></script>
+<script src="/web/js/providers/cursor.js"></script>
+<script src="/web/js/app.js"></script>
+</body>
+</html>

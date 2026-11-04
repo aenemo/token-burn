@@ -1,0 +1,43 @@
+name: Release
+on:
+  push:
+    tags: ["v*"]
+permissions:
+  contents: write
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install pyinstaller
+      - run: python -m PyInstaller --noconfirm --clean packaging/ccu.spec
+      - name: Add dist readme
+        run: python -c "import shutil; shutil.copy('packaging/README-dist.md', 'dist/ccu/README.md')"
+      - name: Zip
+        run: python packaging/build.py --zip-only --name "ccu-${{ github.ref_name }}-${{ runner.os }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ccu-${{ runner.os }}
+          path: dist/ccu-*.zip
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Checksums
+        working-directory: artifacts
+        run: sha256sum ccu-*.zip > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            artifacts/ccu-*.zip
+            artifacts/SHA256SUMS

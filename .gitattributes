@@ -1,0 +1,6 @@
+* text=auto eol=lf
+*.zip binary
+vendor/** binary
+web/vendor/** binary
+*.png binary
+*.ico binary
