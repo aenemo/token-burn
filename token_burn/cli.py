@@ -11,7 +11,7 @@ from token_burn.scheduler import get_backend
 
 
 def build_parser():
-    ap = argparse.ArgumentParser(prog="token-burn", description="Claude + Cursor token usage dashboard")
+    ap = argparse.ArgumentParser(prog="token-burn", description="Claude, Cursor and opencode token usage dashboard")
     sub = ap.add_subparsers(dest="cmd")
     sub.required = True
     p = sub.add_parser("install", help="register hooks and background tasks, start the dashboard")

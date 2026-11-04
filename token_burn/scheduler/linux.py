@@ -15,7 +15,7 @@ def unit_dir():
 
 
 def render_refresh_service(argv):
-    return ("[Unit]\nDescription=Claude + Cursor token usage collector\n\n"
+    return ("[Unit]\nDescription=Claude, Cursor and opencode token usage collector\n\n"
             "[Service]\nType=oneshot\nExecStart=%s\n" % shlex.join([str(a) for a in argv]))
 
 
@@ -26,7 +26,7 @@ def render_refresh_timer():
 
 
 def render_server_service(argv):
-    return ("[Unit]\nDescription=Claude + Cursor token usage dashboard (127.0.0.1 only)\n\n"
+    return ("[Unit]\nDescription=Claude, Cursor and opencode token usage dashboard (127.0.0.1 only)\n\n"
             "[Service]\nExecStart=%s\nRestart=on-failure\nRestartSec=5\n\n"
             "[Install]\nWantedBy=default.target\n" % shlex.join([str(a) for a in argv]))
 

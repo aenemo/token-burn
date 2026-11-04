@@ -28,11 +28,11 @@ def render_task_xml(argv, kind, user=None, start=None):
             "<TimeTrigger><Repetition><Interval>PT1M</Interval></Repetition>"
             "<StartBoundary>%s</StartBoundary><Enabled>true</Enabled></TimeTrigger>" % start + logon)
         limit = "PT10M"
-        desc = "Claude + Cursor token usage: collects usage every minute (no model tokens used)."
+        desc = "Claude, Cursor and opencode token usage: collects usage every minute (no model tokens used)."
     else:
         triggers = logon
         limit = "PT0S"
-        desc = "Claude + Cursor token usage: local dashboard server on 127.0.0.1 only."
+        desc = "Claude, Cursor and opencode token usage: local dashboard server on 127.0.0.1 only."
     return (
         '<?xml version="1.0" encoding="UTF-16"?>\n'
         '<Task version="1.2" xmlns="%s">\n'
