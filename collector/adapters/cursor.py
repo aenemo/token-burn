@@ -12,6 +12,7 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
+from collector import safe_storage
 from collector.effort import split_cursor_model
 from collector.schema import SubagentRun, UsageRecord
 from collector.util import CURSOR_HOOK_LOG, cursor_state_db
@@ -35,8 +36,24 @@ GENERIC_MODEL_NAMES = {"", "default", "auto", "unknown", "unknown model", "n/a",
 
 # ---------------------------------------------------------------- sign-in
 
+TOKEN_NOT_FOUND = "Cursor sign-in token not found"
+TOKEN_ENCRYPTED = "Cursor sign-in token is encrypted and could not be decrypted on this PC"
+_token_problem = TOKEN_NOT_FOUND
+
+
+def token_problem():
+    """Status text for the last read_token() that returned None."""
+    return _token_problem
+
+
 def read_token(db_path=None):
-    """Return the access token string, or None. Opens the database read-only."""
+    """Return the access token string, or None. Opens the database read-only.
+
+    Newer Cursor builds store the token encrypted (safe storage); it is decrypted
+    in memory only, and token_problem() says why a read failed.
+    """
+    global _token_problem
+    _token_problem = TOKEN_NOT_FOUND
     path = Path(db_path) if db_path else Path(cursor_state_db())
     if not path.exists():
         return None
@@ -57,6 +74,11 @@ def read_token(db_path=None):
                     if isinstance(value, bytes):
                         value = value.decode("utf-8", errors="replace")
                     value = str(value).strip().strip('"')
+                    if safe_storage.is_encrypted(value):
+                        value = safe_storage.decrypt_value(value, path)
+                        if not value:
+                            _token_problem = TOKEN_ENCRYPTED
+                            continue
                     if value:
                         return value
         return None
@@ -372,7 +394,7 @@ def _collect(store, now, log, backfill):
     now_s = _now_seconds(now)
     token = read_token()
     if not token:
-        return {"status": "Cursor sign-in token not found", "meta": {}}
+        return {"status": token_problem(), "meta": {}}
 
     last_ts = store.kv_get(LAST_TS_KEY)
     full = bool(backfill) or not last_ts

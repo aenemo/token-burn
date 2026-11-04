@@ -8,7 +8,7 @@ import json
 import os
 from pathlib import Path
 
-from collector.adapters.cursor import bearer_headers, cookie_headers, http_get, http_post, read_token
+from collector.adapters.cursor import bearer_headers, cookie_headers, http_get, http_post, read_token, token_problem
 from collector.util import DATA_DIR, iso, parse_ts
 
 DEBUG_PATH = Path(DATA_DIR) / "plan-percent-fields.json"
@@ -133,7 +133,7 @@ def _write_debug(keys):
 def fetch(log=None):
     token = read_token()
     if not token:
-        return "Cursor sign-in token not found", None
+        return token_problem(), None
     cookie = cookie_headers(token)
     bearer = bearer_headers(token)
     attempts = [
