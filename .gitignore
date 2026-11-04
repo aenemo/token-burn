@@ -8,3 +8,21 @@ __pycache__/
 *.spec.bak
 HANDOFF-NOTES.md
 .claude/
+
+# Local checkpoints, editor and OS files, secrets, npm build output
+checkpoints/
+node_modules/
+*.tgz
+npm-debug.log*
+.env
+.env.*
+*.db
+*.log
+.pytest_cache/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Internal working notes
+HANDOFF-NOTES.md
