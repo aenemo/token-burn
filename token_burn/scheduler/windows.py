@@ -1,8 +1,10 @@
 """Windows: Task Scheduler through schtasks.exe with task XML (no admin rights needed)."""
+import csv
 import datetime as dt
 import os
 import subprocess
 import tempfile
+import time
 from xml.sax.saxutils import escape
 
 from token_burn.scheduler import run
@@ -103,3 +105,73 @@ def status():
     for name in (REFRESH, SERVER):
         parts.append("%s: %s" % (name, "registered" if exists(name) else "missing"))
     return "; ".join(parts)
+
+
+RESULT_RUNNING = 267009      # 0x41301, SCHED_S_TASK_RUNNING
+RESULT_NEVER_RUN = 267011    # 0x41303, SCHED_S_TASK_HAS_NOT_RUN
+
+
+def parse_result(text):
+    """A Last Result cell as an int: decimal (also negative) or 0x hex. None for anything else (for example
+    the 'N/A' or text a localised Windows prints)."""
+    t = (text or "").strip()
+    try:
+        if t.lower().startswith(("0x", "-0x")):
+            return int(t, 16)
+        return int(t, 10)
+    except ValueError:
+        return None
+
+
+def task_state(name):
+    """(Last Run Time text, Last Result int or None) from `schtasks /Query /FO CSV /V /NH`, or None when the
+    query failed. The columns are HostName, TaskName, Next Run Time, Status, Logon Mode, Last Run Time, Last
+    Result, ...: the order does not change with the display language, so positions 5 and 6 are used, and a
+    value that does not parse as a number is treated as unknown rather than guessed."""
+    rc, out = run(["schtasks", "/Query", "/TN", name, "/FO", "CSV", "/NH", "/V"])
+    if rc != 0:
+        return None
+    for row in csv.reader(out.splitlines()):
+        if len(row) >= 7:
+            return row[5].strip(), parse_result(row[6])
+    return None
+
+
+def last_result(name):
+    """The task's Last Result as an int, or None when it cannot be read."""
+    state = task_state(name)
+    return state[1] if state else None
+
+
+def check_refresh(wait_s=20, sleep=time.sleep, clock=time.time):
+    """Run the Refresh task once and check that it ran. Polls until the task's Last Run Time changes from what it
+    was before the /Run and it is no longer running, or wait_s seconds pass. Returns (ok, detail)."""
+    before = task_state(REFRESH)
+    rc, out = run(["schtasks", "/Run", "/TN", REFRESH])
+    if rc != 0:
+        return False, "Task Scheduler would not start the task (%s)" % out.strip()
+    end = clock() + wait_s
+    state = None
+    while True:
+        sleep(2)
+        state = task_state(REFRESH)
+        if state is None:
+            break                                    # cannot read the task: not verified
+        started = before is None or state[0] != before[0]
+        if started and state[1] != RESULT_RUNNING:
+            break
+        if clock() >= end:
+            break
+    if state is None or state[1] is None:
+        return True, "not verified"
+    started = before is None or state[0] != before[0]
+    result = state[1]
+    if result == RESULT_RUNNING:
+        return True, "ok"
+    if not started:
+        return False, "the task did not start within %d seconds" % wait_s
+    if result == 0:
+        return True, "ok"
+    if result == RESULT_NEVER_RUN:
+        return False, "the task did not run"
+    return False, "the task failed with error 0x%08X" % (result & 0xFFFFFFFF)

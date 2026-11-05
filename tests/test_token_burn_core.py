@@ -11,6 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 from token_burn import cli, hook, hooks_register as hr, paths
+from tests.wp3_support import Isolated
 from token_burn.scheduler import get_backend, linux, macos, windows
 
 
@@ -252,7 +253,7 @@ class TestClaudeHook(Tmp):
         self.assertEqual(hook.run_claude("nope"), 0)
 
 
-class TestCli(Tmp):
+class TestCli(Isolated):
     def test_parse(self):
         p = cli.build_parser()
         a = p.parse_args(["install", "--no-open", "--no-start"])
@@ -262,8 +263,52 @@ class TestCli(Tmp):
         self.assertEqual(p.parse_args(["hook", "cursor"]).kind, "cursor")
         with self.assertRaises(SystemExit):
             p.parse_args(["hook", "bogus"])
+        self.assertIsNone(p.parse_args([]).cmd)
+
+    def test_parse_install_flags(self):
+        a = cli.build_parser().parse_args(
+            ["install", "--install-dir", "A", "--data-dir", "B", "--sync-folder", "C", "--join",
+             "--machine-name", "N", "--adopt", "O", "--yes", "--no-open", "--no-start"])
+        self.assertEqual((a.install_dir, a.data_dir, a.sync_folder, a.machine_name, a.adopt),
+                         ("A", "B", "C", "N", "O"))
+        self.assertTrue(a.join and a.yes and not a.new and not a.no_sync)
         with self.assertRaises(SystemExit):
-            p.parse_args([])
+            cli.build_parser().parse_args(["install", "--new", "--join"])
+        u = cli.build_parser().parse_args(["uninstall", "--remove-from-shared-folder", "--interactive"])
+        self.assertTrue(u.remove_from_shared_folder and u.interactive and not u.purge_data)
+
+    def test_parse_sync_and_data(self):
+        p = cli.build_parser()
+        self.assertEqual(p.parse_args(["sync", "status"]).sync_cmd, "status")
+        e = p.parse_args(["sync", "enable", "--folder", "F", "--new", "--machine-name", "M", "--yes"])
+        self.assertEqual((e.folder, e.machine_name, e.new, e.yes), ("F", "M", True, True))
+        self.assertTrue(p.parse_args(["sync", "disable", "--remove-my-data", "--yes"]).remove_my_data)
+        r = p.parse_args(["sync", "rename", "New", "--machine", "Old"])
+        self.assertEqual((r.new_name, r.machine), ("New", "Old"))
+        for c in ("retire", "unretire", "remove"):
+            self.assertEqual(p.parse_args(["sync", c, "X"]).name, "X")
+        for c in ("machines", "reset-id", "now"):
+            self.assertEqual(p.parse_args(["sync", c]).sync_cmd, c)
+        self.assertEqual(p.parse_args(["data", "move", "D", "--yes"]).folder, "D")
+        self.assertEqual(p.parse_args(["data", "status"]).data_cmd, "status")
+        with self.assertRaises(SystemExit):
+            p.parse_args(["sync"])
+
+    def test_no_args_not_frozen_prints_help(self):
+        out = io.StringIO()
+        with mock.patch.object(sys, "frozen", False, create=True), mock.patch.object(sys, "stdout", out), \
+                mock.patch("token_burn.installer.run_wizard_and_pause") as wiz:
+            self.assertEqual(cli.main([]), 0)
+        wiz.assert_not_called()
+        self.assertIn("usage: token-burn", out.getvalue())
+        self.assertIn("install", out.getvalue())
+
+    def test_no_args_frozen_runs_wizard(self):
+        with mock.patch.object(sys, "frozen", True, create=True), \
+                mock.patch("token_burn.installer.run_wizard_and_pause", return_value=0) as wiz:
+            self.assertEqual(cli.main([]), 0)
+        wiz.assert_called_once()
+        self.assertEqual(wiz.call_args[0][0].cmd, "install")
 
     def test_hook_cli_exit_zero(self):
         out = io.StringIO()
@@ -273,42 +318,114 @@ class TestCli(Tmp):
         self.assertEqual(out.getvalue(), '{"permission":"allow"}\n')
 
     def test_install_uninstall_flow(self):
-        be = mock.MagicMock()
-        be.install.return_value = ["ok"]
-        be.uninstall.return_value = ["gone"]
-        with mock.patch.object(cli, "get_backend", return_value=be), \
-                mock.patch.object(cli.proc, "stop_server", return_value=False), \
-                mock.patch.object(cli.webbrowser, "open") as op:
-            self.assertEqual(cli.main(["install", "--no-open", "--no-start"]), 0)
-            op.assert_not_called()
-            be.install.assert_called_once()
-            self.assertEqual(be.install.call_args[0][0][-1], "collect")
-            self.assertEqual(be.install.call_args[0][1][-1], "serve")
-            self.assertTrue(hr.status()["claude"] and hr.status()["cursor"])
-            self.assertEqual(cli.main(["uninstall"]), 0)
-            self.assertFalse(hr.status()["claude"] or hr.status()["cursor"])
+        self.assertEqual(cli.main(["install", "--no-open", "--no-start"]), 0)
+        self.browser.assert_not_called()
+        self.backend.install.assert_called_once()
+        self.assertEqual(self.backend.install.call_args[0][0][-1], "collect")
+        self.assertEqual(self.backend.install.call_args[0][1][-1], "serve")
+        self.assertTrue(hr.status()["claude"] and hr.status()["cursor"])
+        self.assertEqual(cli.main(["uninstall"]), 0)
+        self.assertFalse(hr.status()["claude"] or hr.status()["cursor"])
 
     def test_install_opens_browser(self):
-        be = mock.MagicMock()
-        be.install.return_value = []
-        be.start_server.return_value = True
-        with mock.patch.object(cli, "get_backend", return_value=be), \
-                mock.patch.object(cli.proc, "stop_server"), \
-                mock.patch.object(cli.proc, "wait_health", return_value=True), \
-                mock.patch.object(cli.webbrowser, "open") as op:
-            cli.main(["install"])
-            op.assert_called_once_with(paths.URL)
+        cli.main(["install"])
+        self.browser.assert_called_once_with(paths.URL)
+
+    def test_install_never_prompts_without_a_terminal(self):
+        with mock.patch("builtins.input", side_effect=AssertionError("input() called")):
+            self.assertEqual(cli.main(["install", "--no-open", "--no-start"]), 0)
+            self.assertEqual(cli.main(["uninstall"]), 0)
 
     def test_purge_data(self):
-        d = self.tmp / "data"
+        d = self.data
         d.mkdir()
         (d / "usage.db").write_text("x")
-        be = mock.MagicMock()
-        be.uninstall.return_value = []
-        with mock.patch.object(cli, "get_backend", return_value=be), \
-                mock.patch.object(cli.proc, "stop_server", return_value=False):
-            cli.main(["uninstall", "--purge-data"])
+        cli.main(["uninstall", "--purge-data"])
         self.assertFalse(d.exists())
+
+    def test_uninstall_keeps_data_by_default(self):
+        self.data.mkdir()
+        (self.data / "usage.db").write_text("x")
+        cli.main(["uninstall"])
+        self.assertTrue((self.data / "usage.db").exists())
+
+
+class TestWindowsTaskStatus(unittest.TestCase):
+    BS = chr(92)
+    HEADER = '"HostName","TaskName","Next Run Time","Status","Logon Mode","Last Run Time","Last Result","Author"'
+
+    def csv_row(self, last_run, result, status="Ready"):
+        task = self.BS + "TokenBurn" + self.BS + "Refresh"
+        return ('"PC1","%s","6/11/2026 9:01:00 AM","%s","Interactive only","%s","%s","me"'
+                % (task, status, last_run, result))
+
+    def fake_run(self, rows, calls=None):
+        """schtasks stub: /Query returns the next CSV row (the last one repeats), /Run succeeds."""
+        rows = list(rows)
+
+        def run(argv, **kw):
+            if calls is not None:
+                calls.append(argv)
+            if "/Run" in argv:
+                return 0, "SUCCESS"
+            row = rows.pop(0) if len(rows) > 1 else rows[0]
+            return 0, row + chr(10)
+        return run
+
+    def test_last_result_is_column_six_not_last_run_time(self):
+        row = self.csv_row("6/11/2026 9:00:03 AM", "267009")
+        with mock.patch.object(windows, "run", return_value=(0, row)):
+            self.assertEqual(windows.last_result(windows.REFRESH), 267009)
+            self.assertEqual(windows.task_state(windows.REFRESH), ("6/11/2026 9:00:03 AM", 267009))
+
+    def test_negative_hex_and_text_results(self):
+        self.assertEqual(windows.parse_result("-2147024894"), -2147024894)
+        self.assertEqual(windows.parse_result("0x80070002"), 0x80070002)
+        self.assertEqual(windows.parse_result("0"), 0)
+        self.assertIsNone(windows.parse_result("N/A"))
+        self.assertIsNone(windows.parse_result("6/11/2026 9:00:03 AM"))
+        row = self.csv_row("6/11/2026 9:00:03 AM", "Nicht zutreffend")
+        with mock.patch.object(windows, "run", return_value=(0, row)):
+            self.assertIsNone(windows.last_result(windows.REFRESH))
+
+    def test_failed_query_and_short_row(self):
+        with mock.patch.object(windows, "run", return_value=(1, "ERROR")):
+            self.assertIsNone(windows.last_result(windows.REFRESH))
+        with mock.patch.object(windows, "run", return_value=(0, '"a","b","c"')):
+            self.assertIsNone(windows.task_state(windows.REFRESH))
+
+    def test_check_refresh_waits_for_last_run_time_to_change(self):
+        old = self.csv_row("6/11/2026 9:00:03 AM", "0")
+        running = self.csv_row("6/11/2026 9:01:07 AM", "267009", status="Running")
+        done = self.csv_row("6/11/2026 9:01:07 AM", "0")
+        calls, sleeps = [], []
+        with mock.patch.object(windows, "run", side_effect=self.fake_run([old, old, old, running, done], calls)):
+            ok, detail = windows.check_refresh(wait_s=20, sleep=sleeps.append)
+        self.assertEqual((ok, detail), (True, "ok"))
+        self.assertEqual(len(sleeps), 4)            # old result ignored until the run time moved and it finished
+        self.assertTrue(any("/Run" in c for c in calls))
+
+    def test_check_refresh_reports_error_from_the_new_run(self):
+        old = self.csv_row("6/11/2026 9:00:03 AM", "0")
+        failed = self.csv_row("6/11/2026 9:01:07 AM", "-2147024894")
+        with mock.patch.object(windows, "run", side_effect=self.fake_run([old, failed])):
+            ok, detail = windows.check_refresh(sleep=lambda s: None)
+        self.assertFalse(ok)
+        self.assertIn("0x80070002", detail)
+
+    def test_check_refresh_times_out_when_the_task_never_starts(self):
+        old = self.csv_row("6/11/2026 9:00:03 AM", "0")
+        clock = iter(range(0, 1000, 5))
+        with mock.patch.object(windows, "run", side_effect=self.fake_run([old])):
+            ok, detail = windows.check_refresh(wait_s=20, sleep=lambda s: None, clock=lambda: next(clock))
+        self.assertFalse(ok)
+        self.assertIn("did not start", detail)
+
+    def test_check_refresh_run_refused(self):
+        with mock.patch.object(windows, "run", return_value=(1, "ERROR: denied")):
+            ok, detail = windows.check_refresh(sleep=lambda s: None)
+        self.assertFalse(ok)
+        self.assertIn("would not start", detail)
 
 
 class TestCollectArgs(unittest.TestCase):

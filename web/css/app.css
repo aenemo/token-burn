@@ -188,3 +188,14 @@ tr.sel td { background: var(--col-soft); font-weight: 600; }
 .span-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .agents-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .span-label { color: var(--muted); font-size: 12.5px; }
+
+/* Computers (multi-computer sync): toggle row in the header and a Computers card above the columns, both outside .cols */
+.machines[hidden], .machines-card[hidden] { display: none; }
+button.btn.stale::after { content: " !"; color: var(--warn-fg); font-weight: 700; }
+button.btn.stale[aria-pressed="true"]::after { color: inherit; }
+.machines-card { margin: 12px 0 0; }
+.machines-card > summary { cursor: pointer; font-weight: 650; }
+.machines-card[open] > summary { margin-bottom: 8px; }
+.machine-badge { margin-left: 8px; }
+.mstatus.warn { color: var(--warn-fg); background: var(--warn-bg); border-radius: 999px; padding: 1px 8px; }
+#sync-warn { margin: 12px 0 0; }

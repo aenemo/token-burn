@@ -1,24 +1,39 @@
-"""Command line entry point: python -m token_burn <install|uninstall|status|serve|collect|hook>."""
+"""Command line entry point: python -m token_burn <install|uninstall|status|serve|collect|hook|sync|data>."""
 import argparse
 import atexit
 import os
-import shutil
 import sys
-import webbrowser
 
 from token_burn import hooks_register, paths, proc
 from token_burn.scheduler import get_backend
 
+EXIT_HELP = """Exit codes: 0 ok, 1 error, 2 bad arguments, 3 refused (duplicate name, conflict, cancelled, temporary folder)."""
+
 
 def build_parser():
-    ap = argparse.ArgumentParser(prog="token-burn", description="Claude, Cursor and opencode token usage dashboard")
+    ap = argparse.ArgumentParser(prog="token-burn", description="Claude, Cursor and opencode token usage dashboard",
+                                 epilog=EXIT_HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
-    sub.required = True
-    p = sub.add_parser("install", help="register hooks and background tasks, start the dashboard")
+    p = sub.add_parser("install", help="install: choose folders, optionally share between computers, then register "
+                                       "hooks and background tasks and start the dashboard")
+    p.add_argument("--install-dir", metavar="PATH", help="program folder (zip builds); default is the recommended one")
+    p.add_argument("--data-dir", metavar="PATH", help="data folder (default: the standard one for this computer)")
+    p.add_argument("--sync-folder", metavar="PATH", help="share usage through this synced folder")
+    g = p.add_mutually_exclusive_group()
+    g.add_argument("--new", action="store_true", help="start a new shared folder")
+    g.add_argument("--join", action="store_true", help="join an existing shared folder")
+    p.add_argument("--no-sync", action="store_true", help="this computer only")
+    p.add_argument("--machine-name", metavar="NAME", help="this computer's name in the shared folder")
+    p.add_argument("--adopt", metavar="NAME", help="take over an existing computer's identity (reinstall)")
+    p.add_argument("--yes", action="store_true", help="accept defaults and confirmations (no questions)")
     p.add_argument("--no-open", action="store_true", help="do not open the browser")
     p.add_argument("--no-start", action="store_true", help="do not start the server now")
     p = sub.add_parser("uninstall", help="remove hooks, background tasks and stop the server")
     p.add_argument("--purge-data", action="store_true", help="also delete the data folder")
+    p.add_argument("--remove-from-shared-folder", action="store_true",
+                   help="also delete this computer's history from the shared folder")
+    p.add_argument("--interactive", action="store_true", help="ask questions and wait at the end (Apps and features)")
+    p.add_argument("--yes", action="store_true", help="do not ask; also delete the program folder")
     sub.add_parser("status", help="show what is installed and running")
     p = sub.add_parser("serve", help="run the dashboard server in the foreground")
     p.add_argument("--port", type=int, default=None)
@@ -27,6 +42,9 @@ def build_parser():
     p.add_argument("--backfill", action="store_true")
     p = sub.add_parser("hook", help="agent hook handler (reads JSON on stdin)")
     p.add_argument("kind", choices=("claude", "cursor"))
+    from token_burn import data_cli, sync_cli
+    sync_cli.add_parser(sub)
+    data_cli.add_parser(sub)
     return ap
 
 
@@ -35,60 +53,39 @@ def say(msg):
 
 
 def cmd_install(args):
-    backend = get_backend()
-    refresh = paths.self_command("collect")
-    serve = paths.self_command("serve")
-    say("Data folder: %s" % paths.data_dir())
-    for name, fn in (("Claude hook", hooks_register.install_claude),
-                     ("Cursor hooks", hooks_register.install_cursor)):
-        try:
-            say("%s: %s" % (name, fn()))
-        except Exception as e:
-            say("%s: FAILED (%s)" % (name, e))
-    # Replace any old server before the scheduler (re)starts it.
-    proc.stop_server()
-    for m in backend.install(refresh, serve):
-        say(m)
-    if not args.no_start:
-        started = backend.start_server()
-        if not started:
-            proc.start_server()
-        if proc.wait_health(20):
-            say("Dashboard is up at %s" % paths.URL)
-        else:
-            say("Server did not answer on %s yet; check the log in the data folder." % paths.URL)
-        if not args.no_open:
-            try:
-                webbrowser.open(paths.URL)
-            except Exception:
-                pass
-    return 0
+    from token_burn import installer
+    return installer.run_install(args)
 
 
 def cmd_uninstall(args):
-    backend = get_backend()
-    for m in backend.uninstall():
-        say(m)
-    say("Server: %s" % ("stopped" if proc.stop_server() else "not running"))
-    for name, fn in (("Claude hook", hooks_register.uninstall_claude),
-                     ("Cursor hooks", hooks_register.uninstall_cursor)):
-        try:
-            say("%s: %s" % (name, fn()))
-        except Exception as e:
-            say("%s: FAILED (%s)" % (name, e))
-    if args.purge_data:
-        shutil.rmtree(str(paths.data_dir()), ignore_errors=True)
-        if paths.data_dir().exists():
-            say("Data folder not fully deleted (in use?): %s" % paths.data_dir())
-        else:
-            say("Data folder deleted: %s" % paths.data_dir())
-    else:
-        say("Data kept at %s (use --purge-data to delete)" % paths.data_dir())
-    return 0
+    from token_burn import installer
+    return installer.run_uninstall(args)
+
+
+def cmd_sync(args):
+    from token_burn import sync_cli
+    return sync_cli.cmd_sync(args)
+
+
+def cmd_data(args):
+    from token_burn import data_cli
+    return data_cli.cmd_data(args)
 
 
 def cmd_status(args):
     say("Data folder: %s" % paths.data_dir())
+    try:
+        from token_burn import data_cli
+        _d, how, note = data_cli.status_info()
+        say("Data folder chosen by: %s" % how)
+        if note:
+            say("Note: %s" % note)
+        from collector.sync import config
+        d = config.load(paths.data_dir()).get("install_dir")
+        if d:
+            say("Program folder: %s" % d)
+    except Exception:
+        pass
     say("Scheduler: %s" % get_backend().status())
     h = hooks_register.status()
     say("Claude hook: %s" % ("registered" if h.get("claude") else "not registered"))
@@ -119,7 +116,7 @@ def cmd_hook(args):
 
 
 HANDLERS = {"install": cmd_install, "uninstall": cmd_uninstall, "status": cmd_status,
-            "serve": cmd_serve, "collect": cmd_collect, "hook": cmd_hook}
+            "serve": cmd_serve, "collect": cmd_collect, "hook": cmd_hook, "sync": cmd_sync, "data": cmd_data}
 
 
 def _ensure_std_streams():
@@ -132,7 +129,15 @@ def _ensure_std_streams():
 
 def main(argv=None):
     _ensure_std_streams()
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    if args.cmd is None:
+        if getattr(sys, "frozen", False):
+            # Double-clicked program: run the install wizard, then wait so the window does not vanish.
+            from token_burn import installer
+            return installer.run_wizard_and_pause(parser.parse_args(["install"]))
+        parser.print_help()
+        return 0
     try:
         rc = HANDLERS[args.cmd](args)
     except KeyboardInterrupt:

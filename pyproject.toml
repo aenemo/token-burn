@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "token-burn"
-version = "0.1.0"
+version = "0.2.0"
 description = "Claude Cursor Usage: combined Claude Code and Cursor token usage dashboard"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -17,7 +17,7 @@ keyring = ["keyring"]
 token-burn = "token_burn.cli:main"
 
 [tool.setuptools]
-packages = ["token_burn", "token_burn.scheduler", "collector", "collector.adapters", "collector.plan", "token_burn.web"]
+packages = ["token_burn", "token_burn.scheduler", "collector", "collector.adapters", "collector.plan", "collector.sync", "token_burn.web"]
 py-modules = ["server"]
 include-package-data = true
 

@@ -83,9 +83,14 @@ def thin_samples(samples, now):
     return out
 
 
-def _plan_block(store, platform, now, plan_info):
+def raw_plan_samples(store, platform, now):
+    """[(t, pools)] ascending, the last 30 days of stored plan samples."""
+    return store.plan_samples(platform, now - THIRTY_DAYS_S)
+
+
+def plan_block_from_samples(samples, now, plan_info):
+    """The payload plan block from raw samples [(t, pools)] ascending and a status dict."""
     plan_info = plan_info or {}
-    samples = store.plan_samples(platform, now - THIRTY_DAYS_S)
     pools = []
     if samples:
         for k, v in samples[-1][1].items():
@@ -99,6 +104,10 @@ def _plan_block(store, platform, now, plan_info):
             "next_lookup": plan_info.get("next_lookup"),
             "pools": pools, "samples": thin_samples(samples, now),
             "reset_times": reset_times(samples)}
+
+
+def _plan_block(store, platform, now, plan_info):
+    return plan_block_from_samples(raw_plan_samples(store, platform, now), now, plan_info)
 
 
 def reset_times(samples):
@@ -215,6 +224,13 @@ def build_platform_payload(store, platform, now, status_info):
             "meta": meta}
 
 
-def build_usage_json(platform_payloads, now):
-    return {"generated_at": iso(now), "token_refresh_s": TOKEN_REFRESH_S,
-            "plan_refresh_s": PLAN_INTERVAL_S, "platforms": dict(platform_payloads)}
+def build_usage_json(platform_payloads, now, machines=None, sync=None):
+    """The usage.json document. machines and sync are added only when given, so with sync off the
+    output is exactly what it was before multi-computer sync existed."""
+    out = {"generated_at": iso(now), "token_refresh_s": TOKEN_REFRESH_S,
+           "plan_refresh_s": PLAN_INTERVAL_S, "platforms": dict(platform_payloads)}
+    if machines is not None:
+        out["machines"] = machines
+    if sync is not None:
+        out["sync"] = sync
+    return out

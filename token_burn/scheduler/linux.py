@@ -109,3 +109,11 @@ def status():
     if CRON_TAG in _crontab_get():
         return "cron fallback installed"
     return "no scheduler installed"
+
+
+def check_refresh():
+    """Run the refresh service once (systemd). cron cannot be checked. Returns (ok, detail)."""
+    if not (unit_dir() / "token-burn-refresh.service").is_file():
+        return True, "not verified (cron)"
+    rc, out = run(["systemctl", "--user", "start", "token-burn-refresh.service"])
+    return (True, "ok") if rc == 0 else (False, "systemctl could not run the service (%s)" % out.strip())

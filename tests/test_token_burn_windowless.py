@@ -41,6 +41,39 @@ class FrozenWindows(unittest.TestCase):
         self.assertTrue(hooks_register.is_ours("C:/x/token-burnw.exe hook claude"))
 
 
+class InstallDirOverride(unittest.TestCase):
+    """self_command and hook_command can point at the folder the installer copied the program to."""
+
+    def _patch(self, exe):
+        return (mock.patch.object(sys, "frozen", True, create=True),
+                mock.patch.object(sys, "platform", "win32"),
+                mock.patch.object(sys, "executable", str(exe)))
+
+    def test_install_dir_param_replaces_running_folder(self):
+        with tempfile.TemporaryDirectory() as t:
+            src, dst = Path(t) / "unzipped", Path(t) / "target"
+            for d in (src, dst):
+                d.mkdir()
+                (d / "token-burn.exe").write_bytes(b"")
+                (d / "token-burnw.exe").write_bytes(b"")
+            p = self._patch(src / "token-burn.exe")
+            with p[0], p[1], p[2]:
+                self.assertEqual(paths.self_command("collect", install_dir=dst), [str(dst / "token-burnw.exe"), "collect"])
+                self.assertEqual(paths.self_command("hook", "claude", windowless=False, install_dir=dst)[0],
+                                 str(dst / "token-burn.exe"))
+                self.assertEqual(paths.self_command("collect")[0], str(src / "token-burnw.exe"))
+                self.assertIn(str(dst).replace("\\", "/"), paths.hook_command("claude", install_dir=dst))
+                with paths.use_install_dir(dst):
+                    self.assertEqual(paths.self_command("serve")[0], str(dst / "token-burnw.exe"))
+                    self.assertIn(str(dst).replace("\\", "/"), paths.hook_command("cursor"))
+                self.assertEqual(paths.self_command("serve")[0], str(src / "token-burnw.exe"))
+
+    def test_install_dir_ignored_for_pip_installs(self):
+        with mock.patch.object(sys, "frozen", False, create=True):
+            self.assertEqual(paths.self_command("serve", windowless=False, install_dir="X"),
+                             [sys.executable, "-m", "token_burn", "serve"])
+
+
 class NoStdStreams(unittest.TestCase):
     def test_main_with_none_streams(self):
         so, se = sys.stdout, sys.stderr

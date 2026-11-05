@@ -1,6 +1,6 @@
 # Configuration
 
-There is no settings file. Behaviour is set by environment variables, the `--port` option of `token-burn serve`, constants in `collector/util.py` and browser preferences.
+Behaviour is set by environment variables, the `--port` option of `token-burn serve`, constants in `collector/util.py`, browser preferences and two small files: `location.json` (where the data folder is) and `config.json` (in the data folder: install and sync settings).
 
 ## Port
 
@@ -14,7 +14,7 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 
 | Variable | Effect | Notes |
 |---|---|---|
-| `TOKEN_BURN_DATA_DIR` | Replaces the default per-OS data directory (database, `usage.json`, logs, hook logs) | Read once at start-up. Honoured by the collector, server and both hooks. To make it permanent set it as a user environment variable, then re-run `token-burn install` so scheduled jobs pick it up, and restart Cursor |
+| `TOKEN_BURN_DATA_DIR` | Replaces the data directory (database, `usage.json`, logs, hook logs, `config.json`). Takes priority over `location.json`. While it is set the data folder is fixed: `token-burn install --data-dir` and `token-burn data move` refuse with exit code 3, and `uninstall` leaves `location.json` alone | Read once at start-up. Useful for testing two computers on one PC (see [SYNC](SYNC.md)). Honoured by the collector, server and both hooks. To make it permanent set it as a user environment variable, then re-run `token-burn install` so scheduled jobs pick it up, and restart Cursor |
 | `TOKEN_BURN_PORT` | Dashboard port | Overridden by `--port` |
 | `TOKEN_BURN_CLAUDE_TOKEN` | Claude OAuth access token used for plan lookups | Highest priority in the credential resolver. Falls back to the optional `keyring` extra, then Claude's own credentials file or macOS Keychain |
 | `CURSOR_STATE_DB` | Path to Cursor's `state.vscdb` | Overrides the per-OS default location |
@@ -29,6 +29,81 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 | Windows | `%LOCALAPPDATA%\token-burn\data` |
 | macOS | `~/Library/Application Support/token-burn/data` |
 | Linux | `$XDG_STATE_HOME/token-burn` or `~/.local/state/token-burn` |
+
+### Choosing the data folder, `location.json`
+
+The install wizard lets you choose the data folder. So that every process (scheduled tasks, the server, the Claude and Cursor hooks and the command line) finds a custom folder, the choice is recorded in a pointer file at a fixed per-OS path. It is written only when you pick a non-default folder and removed when you go back to the default.
+
+| OS | Pointer file |
+|---|---|
+| Windows | `%LOCALAPPDATA%\token-burn\location.json` |
+| macOS | `~/Library/Application Support/token-burn/location.json` |
+| Linux | `$XDG_CONFIG_HOME/token-burn/location.json` or `~/.config/token-burn/location.json` |
+
+```json
+{"version": 1, "data_dir": "D:\\TokenBurnData"}
+```
+
+Resolution order for the data directory: the `TOKEN_BURN_DATA_DIR` environment variable, then `location.json` (when valid, absolute, and existing or creatable), then the per-OS default above. An invalid pointer is ignored and the default is used; `token-burn status` reports it.
+
+Rules for a chosen data folder: writable, not a temporary folder, not inside a synced folder (OneDrive, Dropbox, iCloud Drive, Google Drive: the live SQLite database can be corrupted by sync), not a network or UNC path, not inside the program folder, and either empty or already holding Token Burn data (a `usage.db`, or a `config.json` that is Token Burn's own: it has `version` and `app_version`, or a `sync` block). A folder with other files in it is refused. Installing into a folder that already holds this computer's `config.json` reuses its machine id. To combine computers, use the shared folder instead ([SYNC](SYNC.md)).
+
+```
+token-burn data status          # shows the data folder, how it was chosen and its size
+token-burn data move <folder>   # stops tasks and server, copies usage.db (SQLite backup API), config.json,
+                                # usage.json, logs, adopted-*.json.gz and the peer cache, verifies the copy
+                                # (read-only open, row counts per table), writes location.json, restarts,
+                                # then asks before deleting the old copy
+token-burn data move <folder> --yes   # no questions; also deletes the old copy
+```
+
+`data move` refuses (exit 3) a target that already holds `usage.db`, a target inside the current folder or the other way round, a folder that fails the rules above, and any move while `TOKEN_BURN_DATA_DIR` is set. If the copy cannot be verified the old data is left untouched and the tasks are restarted (exit 1). Without `--yes` and without a terminal the old copy is kept.
+
+### `config.json` (in the data folder)
+
+Written by the installer and `token-burn sync` commands (atomically, mode 0600 on macOS and Linux). A missing file, or `"sync": {"enabled": false}`, means sync is off, and then `usage.json` has no `sync` or `machines` keys at all. A `config.json` created only by `token-burn sync enable` (without the installer) may hold just the `sync` block.
+
+```json
+{"version": 1, "app_version": "0.2.0",
+ "install_dir": "C:\\Users\\me\\AppData\\Local\\Programs\\Token Burn",
+ "data_dir": "C:\\Users\\me\\AppData\\Local\\token-burn\\data",
+ "sync": {"enabled": true, "folder": "C:\\Users\\me\\OneDrive",
+          "machine_id": "3f2a9c0e5b7d4e1fa0b1c2d3e4f5a6b7", "machine_name": "Office PC",
+          "joined_at": "2026-11-05T03:00:00Z", "adopted": false}}
+```
+
+| Key | Meaning |
+|---|---|
+| `version` | Schema version of this file. It stays 1 and does not follow the program version |
+| `app_version` | The Token Burn version that last ran the installer (for example `0.2.0`). Used for the "Upgrade it to ...?" question. Not the schema version |
+| `install_dir` | Program folder (zip installs); used for upgrades and uninstall |
+| `data_dir` | Recorded for display only; `location.json` and the environment decide where data lives |
+| `sync.enabled` | Whether this computer shares usage |
+| `sync.folder` | The synced folder you chose (the app creates `token-burn` inside it; if you choose a folder called `token-burn` its parent is used) |
+| `sync.machine_id` | 32 hex characters, random, the only thing used to build file names. Kept across reinstalls, removed by `uninstall --purge-data` |
+| `sync.machine_name` | Display name, 1 to 40 characters, unique among computers |
+| `sync.joined_at` | When this computer joined |
+| `sync.adopted` | True when this computer took over an existing identity after a reinstall |
+
+Sync state lives in the database's key-value table: `sync:last_hash`, `sync:last_write`, `sync:last_token` and `sync:conflict`.
+
+### Sync settings and commands
+
+Constants (in `collector/sync/`, not user-editable): write throttle 5 minutes (300 s), heartbeat 30 minutes (1800 s, `HEARTBEAT_S`), a computer is stale after 1 hour, at most 64 computers are read per pass. See [SYNC](SYNC.md) for the full guide.
+
+```
+token-burn sync status
+token-burn sync enable [--folder PATH] [--new | --join] [--machine-name NAME] [--yes]
+token-burn sync disable [--remove-my-data] [--yes]
+token-burn sync machines
+token-burn sync rename NEW_NAME [--machine NAME]
+token-burn sync retire NAME | unretire NAME
+token-burn sync remove NAME [--yes]
+token-burn sync reset-id [--yes]
+token-burn sync now
+```
+
+Names are matched case-insensitively; an ambiguous name lists the candidates and an id (8 to 32 hex characters) is accepted. `remove`, `disable --remove-my-data` and `reset-id` are refused with exit 3 when there is no terminal and no `--yes`. Exit codes: 0 ok, 1 error (including a name or id that matches no computer), 2 bad arguments, 3 refused or cancelled.
 
 ## Cursor database location
 
@@ -105,6 +180,7 @@ Per browser, per origin, wrapped in try/catch so a blocked store never breaks th
 | `token-burn.graph.<platform>` | `cumulative` or `rolling` | Usage graph mode for `claude`, `cursor` or `opencode` |
 | `token-burn.providers` | list of visible providers | Which columns the header toggle buttons show. Uninstalled providers are disabled |
 | `token-burn.span.<platform>` | one of the span keys (`30m` to `30d`) | Rolling total period for that column |
+| `token-burn.machines` | object of `{machineId: false}` | Computers switched off in the header toggle row (sync only). Unknown ids are ignored, and all off is treated as All |
 
 A different port is a different origin, so preferences do not carry across ports.
 

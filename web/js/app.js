@@ -4,10 +4,11 @@
 (function () {
   'use strict';
   var TokenBurn = window.TokenBurn = window.TokenBurn || {};
-  var F = TokenBurn.fmt, S = TokenBurn.stats, C = TokenBurn.charts, T = TokenBurn.tables;
+  var F = TokenBurn.fmt, S = TokenBurn.stats, C = TokenBurn.charts, T = TokenBurn.tables, M = TokenBurn.machines;
 
   var REFRESH_MS = 60000, PLAN_REFRESH_S = 600; // fallbacks; usage.json token_refresh_s / plan_refresh_s override
   var LS_WIN = 'token-burn.window', LS_METRIC = 'token-burn.metric', LS_PROV = 'token-burn.providers';
+  var LS_MACH = 'token-burn.machines';
   var LS_GRAPH = 'token-burn.graph.', LS_SPAN = 'token-burn.span.', LS_AGENTS = 'token-burn.agents.';
   var HAVE_ROLLING = !!(S.SPANS && S.rollingSeries && S.rollingTotal && S.rollingInfo && S.spanDef);
   var DEFAULT_SPAN = HAVE_ROLLING ? S.DEFAULT_SPAN : null;
@@ -22,6 +23,12 @@
   try {
     var sp = JSON.parse(localStorage.getItem(LS_PROV) || 'null');
     if (sp && typeof sp === 'object') for (var pk in sp) if (sp[pk] === false) prefs[pk] = false;
+  } catch (e) { /* storage unavailable or invalid */ }
+
+  var mprefs = {}; // machine id -> false when the user turned that computer off (absent means on)
+  try {
+    var sm2 = JSON.parse(localStorage.getItem(LS_MACH) || 'null');
+    if (sm2 && typeof sm2 === 'object') for (var mk in sm2) if (sm2[mk] === false) mprefs[mk] = false;
   } catch (e) { /* storage unavailable or invalid */ }
 
   function $(id) { return document.getElementById(id); }
@@ -558,16 +565,157 @@
     }
     return { shown: shown, avail: avail };
   }
+  // ---------- computers (multi-computer sync) ----------
+  var CURSOR_NOTE = 'Cursor usage comes from your Cursor account, so it is the same on every computer and is not filtered by computer.';
+  var machineTable = null, machineSig = null;
+  function saveMachinePrefs() {
+    try { localStorage.setItem(LS_MACH, JSON.stringify(mprefs)); } catch (e) { /* ignore */ }
+  }
+  function ago(ms, nowMs) {
+    var s = Math.max(0, Math.round((nowMs - ms) / 1000));
+    if (s < 90) return 'just now';
+    var m = Math.round(s / 60);
+    if (m < 90) return m + ' min ago';
+    var h = Math.round(m / 60);
+    if (h < 48) return h + ' h ago';
+    return Math.round(h / 24) + ' days ago';
+  }
+  function machineLabel(m) { return String(m.name || m.hostname || m.id) + (m.is_self ? ' (this computer)' : ''); }
+  function machineTitle(m, nowMs) {
+    var ms = Date.parse(m.last_seen);
+    return 'Last seen ' + (isNaN(ms) ? 'n/a' : F.dt(ms) + ' (' + ago(ms, nowMs) + ')');
+  }
+  function machineStatus(m, nowMs) {
+    if (m.stale) {
+      var ms = Date.parse(m.last_seen);
+      var h = isNaN(ms) ? null : Math.max(1, Math.round((nowMs - ms) / 3600000));
+      return { text: h == null ? 'Stale' : 'Stale (no update for ' + h + ' h)', warn: true };
+    }
+    if (m.superseded_by) return { text: 'Superseded by ' + String(m.superseded_by_name || 'a newer entry'), warn: false };
+    if (m.state === 'retired') return { text: 'Retired', warn: false };
+    var st = m.status == null || m.status === '' ? 'ok' : String(m.status);
+    return { text: st === 'ok' ? 'OK' : st, warn: st !== 'ok' };
+  }
+  function setPressed(b, on) { b.setAttribute('aria-pressed', on ? 'true' : 'false'); }
+  // Builds the toggle row. Buttons are rebuilt only when the list of computers changes, so a click keeps focus.
+  function buildMachineToggles(list) {
+    var box = $('machines');
+    var sig = list.map(function (m) { return m.id; }).join('|');
+    if (sig !== machineSig) {
+      machineSig = sig;
+      box.textContent = '';
+      var all = el('button', 'btn', 'All machines');
+      all.type = 'button';
+      all.setAttribute('data-all', '1');
+      all.addEventListener('click', function () { mprefs = {}; saveMachinePrefs(); render(); resizeCharts(); });
+      box.appendChild(all);
+      list.forEach(function (m) {
+        var b = el('button', 'btn');
+        b.type = 'button';
+        b.setAttribute('data-mid', m.id);
+        b.addEventListener('click', function () {
+          mprefs[m.id] = mprefs[m.id] === false ? true : false;
+          var ids = M.list(state.data).filter(function (x) { return !x.superseded_by; }).map(function (x) { return x.id; });
+          if (!ids.some(function (id) { return mprefs[id] !== false; })) mprefs = {}; // all off means all
+          saveMachinePrefs();
+          render();
+          resizeCharts();
+        });
+        box.appendChild(b);
+      });
+    }
+    var sel = M.selected(state.data, mprefs);
+    var nowMs = Date.parse(state.data.generated_at);
+    if (isNaN(nowMs)) nowMs = Date.now();
+    var noneOff = list.every(function (m) { return mprefs[m.id] !== false; });
+    Array.prototype.forEach.call(box.children, function (b) {
+      var id = b.getAttribute('data-mid');
+      if (!id) { setPressed(b, noneOff); return; }
+      var m = list.filter(function (x) { return x.id === id; })[0];
+      if (!m) return;
+      b.textContent = machineLabel(m);
+      b.title = machineTitle(m, nowMs);
+      b.classList.toggle('stale', !!m.stale);
+      setPressed(b, sel.indexOf(id) >= 0);
+    });
+  }
+  // Toggle row, Computers table and sync messages. All of it sits outside main.cols, so column alignment is untouched.
+  function renderMachines() {
+    if (!M) return;
+    var data = state.data || {};
+    var list = M.list(data);
+    var sync = data.sync || null;
+    var box = $('machines'), card = $('machines-box'), warn = $('sync-warn');
+    var multi = list.length >= 2;
+    // Superseded entries are old ids of a computer listed under its newer entry, so they get no toggle.
+    var shown = list.filter(function (m) { return !m.superseded_by; });
+    box.hidden = shown.length < 2;
+    if (!box.hidden) buildMachineToggles(shown);
+    var msgs = sync && Array.isArray(sync.messages) ? sync.messages : [];
+    var bad = !!sync && sync.enabled !== false && sync.status != null && sync.status !== 'ok';
+    warn.hidden = !bad;
+    warn.textContent = bad ? 'Sync: ' + String(sync.status) : '';
+    card.hidden = !(multi || bad || msgs.length);
+    var notes = $('sync-notes');
+    notes.textContent = '';
+    msgs.forEach(function (t) { notes.appendChild(el('p', 'note', String(t))); });
+    if (card.hidden) return;
+    if (!machineTable) {
+      machineTable = T.create($('machines-table'), {
+        search: false, filters: false, sortKey: 'tokens', sortDir: 'desc', emptyText: 'No computers reported yet.',
+        columns: [
+          { key: 'name', label: 'Computer', v: function (r) { return r.name; }, node: function (r) {
+            var s = el('span', null, r.name);
+            if (r.isSelf) s.appendChild(el('span', 'pill ok machine-badge', 'This computer'));
+            return s;
+          } },
+          { key: 'os', label: 'OS', v: function (r) { return r.os; }, text: function (r) { return r.os || 'n/a'; } },
+          { key: 'seen', label: 'Last seen', v: function (r) { return r.seenMs; }, text: function (r) { return r.seenText; } },
+          { key: 'tokens', label: 'Tokens in window', num: true, v: function (r) { return r.tokens; }, text: function (r) { return F.tokens(r.tokens); }, title: function (r) { return F.full(r.tokens) + ' tokens'; } },
+          { key: 'share', label: 'Share', num: true, headTitle: 'Claude and opencode only; Cursor is account-wide',
+            v: function (r) { return r.share; }, text: function (r) { return r.share == null ? 'n/a' : F.share(r.share); } },
+          { key: 'status', label: 'Status', v: function (r) { return r.status.text; }, node: function (r) {
+            return el('span', r.status.warn ? 'mstatus warn' : 'mstatus', r.status.text);
+          } }
+        ]
+      });
+    }
+    var nowMs = Date.parse(data.generated_at);
+    if (isNaN(nowMs)) nowMs = Date.now();
+    var plat = (data.platforms && (data.platforms.claude || data.platforms.opencode)) || null;
+    var by = plat && plat.start ? M.tokensByMachine(data, S.frame(plat, state.win)) : {};
+    var sum = 0;
+    list.forEach(function (m) { sum += by[m.id] || 0; });
+    machineTable.update(list.map(function (m) {
+      var ms = Date.parse(m.last_seen), tok = by[m.id] || 0;
+      return {
+        id: m.id, name: String(m.name || m.hostname || m.id), isSelf: !!m.is_self, os: m.os || '',
+        seenMs: isNaN(ms) ? null : ms,
+        seenText: isNaN(ms) ? 'n/a' : F.dt(ms) + ' (' + ago(ms, nowMs) + ')',
+        tokens: tok, share: sum > 0 ? tok / sum : null, status: machineStatus(m, nowMs)
+      };
+    }));
+  }
+
   // Draws only the visible columns (hidden ones keep their state and are redrawn from state.data when shown).
   function render() {
     var n = applyToggles();
     if (!state.data) return;
     var plats = state.data.platforms || {};
     var shown = n.shown, avail = n.avail;
+    // Computer filter: Claude and opencode are rebuilt from the chosen computers; Cursor is account-wide.
+    var sel = M ? M.selected(state.data, mprefs) : [];
+    var filtered = !!M && sel.length > 0 && sel.length < M.list(state.data).length;
+    var view = M ? M.filterData(state.data, sel) : state.data;
+    var vplats = (view && view.platforms) || plats;
     columns.forEach(function (c) {
-      var plat = plats[c.p.id];
-      if (plat && plat.installed !== false && prefs[c.p.id] !== false) c.render(plat);
+      var plat = vplats[c.p.id];
+      if (plat && plat.installed !== false && prefs[c.p.id] !== false) {
+        c.render(plat);
+        if (filtered && c.p.id === 'cursor') c.q('.use-notes').appendChild(el('p', 'note', CURSOR_NOTE));
+      }
     });
+    renderMachines();
     var none = $('noclients');
     if (none) none.hidden = avail !== 0;
     var off = $('alloff');

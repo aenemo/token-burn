@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 WEB = Path(__file__).resolve().parent.parent / "web"
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def read(rel):
@@ -172,6 +173,134 @@ class FrontendContract(unittest.TestCase):
         js = read("js/app.js")
         self.assertEqual(js.count("<div class=\"plat-head\">"), 1)
         self.assertEqual(js.count("'<section class=\"card\">"), 5)
+
+    def test_burn_header_animation(self):
+        html = read("index.html")
+        self.assertLess(html.index("css/app.css"), html.index("css/burn.css"))
+        self.assertLess(html.index("js/app.js"), html.index("js/burn.js"))
+        top = html[html.index('<header class="top">'):html.index("</header>")]
+        self.assertLess(top.index("<h1>Token Burn</h1>"), top.index('class="burn" aria-hidden="true"'))
+        self.assertLess(top.index('class="burn" aria-hidden="true"'), top.index('class="note tagline"'))
+        self.assertEqual(html.count('class="blk '), 3)
+        self.assertIn("<h1>Token Burn</h1>", html)
+        css = read("css/burn.css")
+        self.assertRegex(css, r"\.burn\s*\{[^}]*pointer-events:\s*none")
+        self.assertIn("@media (prefers-reduced-motion: reduce)", css)
+        self.assertIn("animation: none", css)
+        self.assertRegex(css, r"\.is-paused[^{]*\{[^}]*animation-play-state:\s*paused")
+        self.assertRegex(css, r"@media \(max-width: 340px\)\s*\{[^}]*display:\s*none")
+        allowed = {"translate", "scale", "opacity"}
+        bodies = re.findall(r"@keyframes\s+[\w-]+\s*\{((?:[^{}]*\{[^{}]*\})+)\s*\}", css)
+        self.assertGreaterEqual(len(bodies), 6)
+        for body in bodies:
+            for block in re.findall(r"\{([^{}]*)\}", body):
+                for prop in re.findall(r"([\w-]+)\s*:", block):
+                    self.assertIn(prop, allowed, "keyframe animates " + prop)
+        for bad in ("url(", "@import", "http"):
+            self.assertNotIn(bad, css)
+        js = read("js/burn.js")
+        for want in ("'use strict'", "visibilitychange", "document.hidden"):
+            self.assertIn(want, js)
+        for bad in ("requestAnimationFrame", "setInterval", "innerHTML", ".style."):
+            self.assertNotIn(bad, js)
+        self.assertNotRegex(html, r"\sstyle\s*=")
+
+    def test_machines_ui_contract(self):
+        html = read("index.html")
+        self.assertLess(html.index("js/tables.js"), html.index("js/machines.js"))
+        self.assertLess(html.index("js/machines.js"), html.index("js/app.js"))
+        main_open = html.index('<main class="cols">')
+        main_close = html.index("</main>")
+        for marker in ('id="machines"', 'id="machines-box"', 'id="machines-table"', 'id="sync-notes"'):
+            self.assertIn(marker, html)
+        self.assertNotIn('id="machines', html[main_open:main_close])
+        self.assertNotIn('id="sync-', html[main_open:main_close])
+        self.assertLess(html.index('id="machines-box"'), main_open)
+        self.assertRegex(html, r'<details id="machines-box"[^>]*\bhidden\b')
+        self.assertRegex(html, r'id="machines"[^>]*\bhidden\b')
+        app = read("js/app.js")
+        self.assertIn("'token-burn.machines'", app)
+        self.assertIn("localStorage.setItem(LS_MACH", app)
+        self.assertIn("M.filterData", app)
+        self.assertIn("is not filtered by computer", app)
+        self.assertNotIn("is not filtered by computer", read("js/providers/cursor.js"))
+        mjs = read("js/machines.js")
+        self.assertNotIn("innerHTML", mjs)
+        self.assertIn("filterData", mjs)
+        self.assertIn("tokensByMachine", mjs)
+        self.assertIsNone(re.search(r"\.style\.|insertAdjacentHTML|document\.write", mjs))
+        css = read("css/app.css")
+        self.assertIn(".btn.stale::after", css)
+        self.assertIn(".machines-card", css)
+        self.assertNotRegex(css, r"(?m)^[^/*\n]*\.cols[^{\n]*\.machines[^{\n]*\{")
+
+    def test_sync_fixture_shape(self):
+        d = json.loads((FIXTURES / "sample_usage_sync.json").read_text(encoding="utf-8"))
+        self.assertEqual(len(d["machines"]), 2)
+        self.assertEqual(sum(1 for m in d["machines"] if m["is_self"]), 1)
+        for key in ("id", "name", "os", "last_seen", "state", "stale", "status", "platforms", "tokens_30d"):
+            self.assertIn(key, d["machines"][0])
+        self.assertEqual(len(d["sync"]["messages"]), 1)
+        self.assertIn("status", d["sync"])
+        ids = {m["id"] for m in d["machines"]}
+        self.assertEqual(set(d["platforms"]["claude"]["machines"]), ids)
+        # opencode has data on one computer only: the breakdown is still sent, with that one entry
+        self.assertEqual(set(d["platforms"]["opencode"]["machines"]), {d["machines"][0]["id"]})
+        self.assertNotIn("machines", d["platforms"]["cursor"])
+        # per-machine breakdowns add up to the merged series
+        for p in ("claude", "opencode"):
+            tot = lambda ser: sum(sum(s["input"]) + sum(s["output"]) + sum(s["cache"]) for s in ser)
+            parts = sum(tot(v["series"]) for v in d["platforms"][p]["machines"].values())
+            self.assertEqual(parts, tot(d["platforms"][p]["series"]))
+
+    @unittest.skipUnless(shutil.which("node"), "node not on PATH")
+    def test_machines_filter_data(self):
+        js = (
+            "global.window={};"
+            "eval(require('fs').readFileSync(process.argv[1],'utf8'));"
+            "var M=window.TokenBurn.machines;"
+            "var d=JSON.parse(require('fs').readFileSync(process.argv[2],'utf8'));"
+            "var ids=d.machines.map(function(m){return m.id;});"
+            "var tot=function(ser){var n=0;ser.forEach(function(s){s.t.forEach(function(t,i){n+=s.input[i]+s.output[i]+s.cache[i];});});return n;};"
+            "var one=M.filterData(d,[ids[1]]);"
+            "var all=M.filterData(d,ids);"
+            "var none=M.filterData({platforms:d.platforms},[ids[0]]);"
+            "console.log(JSON.stringify({"
+            "sameAll:all===d,sameNoKey:none.platforms===d.platforms,"
+            "claudeOne:tot(one.platforms.claude.series),claudeB:tot(d.platforms.claude.machines[ids[1]].series),"
+            "claudeAll:tot(d.platforms.claude.series),"
+            "ocOne:one.platforms.opencode.series.length,ocOneRuns:one.platforms.opencode.subagent_runs.length,"
+            "ocA:tot(M.filterData(d,[ids[0]]).platforms.opencode.series),ocAll:tot(d.platforms.opencode.series),"
+            "legacy:(function(){var l=JSON.parse(JSON.stringify(d));delete l.platforms.opencode.machines;"
+            "return [M.filterData(l,[ids[0]]).platforms.opencode.series.length>0,M.filterData(l,[ids[1]]).platforms.opencode.series.length>0];})(),"
+            "cursorSame:one.platforms.cursor===d.platforms.cursor,"
+            "runs:one.platforms.claude.subagent_runs.length,"
+            "planKept:one.platforms.claude.plan===d.platforms.claude.plan,"
+            "sorted:one.platforms.claude.series.map(function(s){return tot([s]);}),"
+            "origUntouched:tot(d.platforms.claude.series)===tot(d.platforms.claude.series),"
+            "sel:M.selected(d,{[ids[0]]:false,[ids[1]]:false}),sel1:M.selected(d,{[ids[0]]:false,bogus:false}),"
+            "by:M.tokensByMachine(d,{startMs:Date.parse(d.platforms.claude.start),loIdx:0,endIdx:43199}),ids:ids"
+            "}));"
+        )
+        out = subprocess.run(
+            ["node", "-e", js, str(WEB / "js" / "machines.js"), str(FIXTURES / "sample_usage_sync.json")],
+            capture_output=True, text=True, check=True).stdout
+        r = json.loads(out)
+        self.assertTrue(r["sameAll"])
+        self.assertTrue(r["sameNoKey"])
+        self.assertEqual(r["claudeOne"], r["claudeB"])
+        self.assertLess(r["claudeOne"], r["claudeAll"])
+        self.assertEqual(r["ocOne"], 0)          # the idle computer alone: no opencode usage, not the other's
+        self.assertEqual(r["ocOneRuns"], 0)
+        self.assertEqual(r["ocA"], r["ocAll"])
+        self.assertEqual(r["legacy"], [True, True])   # no machines key at all: old installed-platform fallback
+        self.assertTrue(r["cursorSame"])
+        self.assertEqual(r["runs"], 2)
+        self.assertTrue(r["planKept"])
+        self.assertEqual(r["sorted"], sorted(r["sorted"], reverse=True))
+        self.assertEqual(sorted(r["sel"]), sorted(r["ids"]))
+        self.assertEqual(r["sel1"], [r["ids"][1]])
+        self.assertEqual(r["by"][r["ids"][1]], r["claudeB"])      # absent from the opencode breakdown = zero
 
 
 if __name__ == "__main__":

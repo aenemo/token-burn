@@ -103,7 +103,16 @@ def run(backfill=False, now=None, platforms=None, log=None):
                     payloads[name]["installed"] = True
                 except Exception as e:
                     log.error("%s payload failed: %s", name, type(e).__name__)
-        usage = build_usage_json(payloads, now)
+            machines, sync_block = None, None
+            try:
+                from collector import sync
+                payloads, sync_block, machines = sync.apply(store, payloads, now, log)
+            except Exception as e:  # sync must never stop the local dashboard
+                log.error("sync failed: %s", type(e).__name__)
+                sync_block, machines = {"enabled": True, "status": "sync failed"}, None
+        if sync_block is not None and not sync_block.get("enabled"):
+            sync_block = None  # sync off: usage.json stays exactly as before sync existed
+        usage = build_usage_json(payloads, now, machines=machines, sync=sync_block)
         util.atomic_write_json(util.USAGE_JSON, usage)
         parts = []
         for name, p in payloads.items():

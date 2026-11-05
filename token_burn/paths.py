@@ -1,4 +1,5 @@
 """Locations and self-invocation helpers (standard library only)."""
+import contextlib
 import os
 import shlex
 import subprocess
@@ -10,13 +11,13 @@ URL = "http://127.0.0.1:%d/" % PORT
 
 
 def data_dir():
-    """TOKEN_BURN_DATA_DIR, else the collector's DATA_DIR when importable, else a per-OS default."""
+    """TOKEN_BURN_DATA_DIR, else the folder in location.json, else the per-OS default (collector.util decides)."""
     env = os.environ.get("TOKEN_BURN_DATA_DIR")
     if env:
         return Path(env)
     try:
         from collector import util
-        return Path(util.DATA_DIR)
+        return Path(util.default_data_dir())
     except Exception:
         pass
     home = Path.home()
@@ -42,11 +43,32 @@ def is_windows():
     return sys.platform.startswith("win")
 
 
-def self_command(*args, windowless=True):
+_install_dir_override = None
+
+
+@contextlib.contextmanager
+def use_install_dir(install_dir):
+    """Within the block self_command and hook_command point at install_dir (frozen builds only)."""
+    global _install_dir_override
+    old = _install_dir_override
+    _install_dir_override = Path(install_dir) if install_dir else None
+    try:
+        yield
+    finally:
+        _install_dir_override = old
+
+
+def self_command(*args, windowless=True, install_dir=None):
     """argv list that launches this program. On Windows, prefer token-burnw.exe (frozen) or pythonw.exe (no console window)
-    unless windowless=False (hooks need stdout, which pythonw discards)."""
+    unless windowless=False (hooks need stdout, which pythonw discards).
+
+    install_dir (a frozen build only) points the command at that program folder instead of the running one,
+    so tasks and hooks follow the files the installer copied there."""
+    install_dir = install_dir or _install_dir_override
     if getattr(sys, "frozen", False):
         exe = sys.executable
+        if install_dir:
+            exe = str(Path(install_dir) / Path(exe).name)
         if windowless and is_windows():
             # token-burnw.exe is the GUI-subsystem twin of token-burn.exe (no console window).
             w = Path(exe).with_name("token-burnw.exe")
@@ -68,9 +90,9 @@ def quote_command(argv):
     return shlex.join([str(a) for a in argv])
 
 
-def hook_command(kind):
+def hook_command(kind, install_dir=None):
     """Command string stored in the Claude / Cursor hook config."""
-    argv = self_command("hook", kind, windowless=False)
+    argv = self_command("hook", kind, windowless=False, install_dir=install_dir)
     if is_windows():
         # Forward slashes survive both cmd.exe and the Git Bash shell Claude Code may use.
         argv = [argv[0].replace("\\", "/")] + argv[1:]

@@ -13,7 +13,7 @@ Every module, script and page in this project follows this file. If code and thi
   - `C:\AI-Coding\Personal\Token Usage Graph`
 
   Reading their files is fine, including their `data\` files, which the parity check reads.
-- All files live under `ROOT = C:\AI-Coding\Personal\Claude and Cursor Combined Token Usage Graph`. Runtime data lives in `ROOT\data\`, which is gitignored and never packed.
+- All files live under `ROOT = C:\AI-Coding\Personal\OS Agnostic CC Token Tracker`. Installed runtime data lives in the per-user data folder (see `docs/CONFIGURATION.md`); a source checkout can use `ROOT\data\`, which is gitignored and never packed.
 
 ## Constants (`collector/util.py`)
 
@@ -23,7 +23,7 @@ Every module, script and page in this project follows this file. If code and thi
 | `TOKEN_REFRESH_S` | 60 | collector schedule and page poll |
 | `PLAN_INTERVAL_S` | 590 | plan lookup throttle per platform (about 10 minutes, as in the Claude source) |
 | `DEFAULT_PORT` | 8421 | |
-| `DATA_DIR` | `ROOT\data` | overridden by the `TOKEN_BURN_DATA_DIR` environment variable (read at import) |
+| `DATA_DIR` | per-OS data folder | `TOKEN_BURN_DATA_DIR` environment variable, then the `location.json` pointer, then the per-OS default (read at import) |
 | `DB_PATH` | `DATA_DIR\usage.db` | |
 | `USAGE_JSON` | `DATA_DIR\usage.json` | |
 | `CLAUDE_HOOK_LOG` | `DATA_DIR\claude-subagents.jsonl` | |
@@ -333,6 +333,120 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
 ### Platform errors
 - If a platform fails entirely, its `status` holds the message. Its other fields keep the last data in the store.
 
+## Multi-computer sync (version 0.2.0)
+
+Optional. With sync off (no `config.json`, or `"sync": {"enabled": false}`) the `sync` and `machines` keys are absent and `usage.json` is exactly as described above. The frontend treats an absent `sync` key as sync off. Older frontends ignore the new keys.
+
+### New top-level keys of `usage.json`
+
+```json
+"machines": [{"id": "3f2a9c0e5b7d4e1fa0b1c2d3e4f5a6b7", "name": "Office PC", "os": "Windows 11", "hostname": "OFFICE-PC",
+  "app_version": "0.2.0", "is_self": true, "last_seen": "2026-11-05T03:00:00Z", "state": "active", "stale": false,
+  "status": "ok", "superseded_by": null, "superseded_by_name": null,
+  "platforms": ["claude", "cursor"], "tokens_30d": 123456789}],
+"sync": {"enabled": true, "status": "ok", "folder_found": true, "last_export": "2026-11-05T03:00:00Z",
+  "ignored_files": 1, "messages": ["MacBook: incomplete or damaged (still syncing?); showing the last good copy"]}
+```
+
+- `machines` appears only when sync is enabled. Sorted self first, then by name. `state` is `active` or `retired`; removed computers are not listed. `stale` is true when `state` is active and `now - last_seen > 3600` (for this computer, since its last export, or false when an export is pending). `tokens_30d` counts Claude and opencode only (Cursor is account-wide). `name` is the control file's `display_name` if present, else the file's. `superseded_by` and `superseded_by_name` are null, or the id and name of a newer entry for the same physical computer (same `host_fp`, for example after the id was lost); a superseded row is never `stale` and its data is folded into the newer entry.
+- `sync.status` is `"ok"` or a message such as `"shared folder not found: <folder>"`, `"sync failed (<ExcName>)"`, or a conflict or removal message. When the folder is missing the local data alone is shown and the export is skipped. `sync.messages` carries per-computer notes (damaged file, newer format, clock ahead by N min, too many computers, not downloaded yet).
+- Sync off: the `sync` key and the `machines` key are both absent. The frontend treats absent as off.
+
+### `platforms.claude` and `platforms.opencode`: `machines`
+
+Present whenever 2 or more computers are in the `machines` list, with an entry for every computer that has data for the platform (possibly only one, possibly none: `{}`). Because the key is present, a computer missing from it has no usage for that platform; the frontend only falls back to each computer's installed `platforms` when the key is absent altogether (older collectors). A superseded computer has no entry of its own: its data is folded into the newer entry for the same physical computer.
+
+```json
+"machines": {"<machine id>": {"series": [ ... same shape as platforms.<p>.series, t relative to start ... ],
+                              "subagent_runs": [ ... ]}}
+```
+
+The platform's own `series` and `subagent_runs` are the merged totals. `meta.machines` holds the number of computers. Cursor has no `machines` breakdown because its data is account-wide. The frontend (`web/js/machines.js`) rebuilds the Claude and opencode series from `machines` when only some computers are selected.
+
+### Merge rules (`collector/sync/merge.py`)
+
+Minutes are merged as absolute epoch minutes (a peer's `start` may differ); at the end `t = m - start_minute` and only `0 <= t < MINUTES` is kept. A cell is `[input, output, cache, cost, requests, sub_input, sub_output, sub_cache, sub_cost, cache_read, sub_cache_read]`.
+
+| Platform | Rule |
+|---|---|
+| Claude, opencode | Cells are summed across this computer and every included peer (retired still counts, removed does not), except that machine ids sharing a `host_fp` (one physical computer that lost its id, was reset or reinstalled, plus this computer's own older ids and `adopted-<id>.json.gz` history) read the same logs, so they are combined per cell by MAX first and then summed with other computers. The newest written member represents the group; older ones are `superseded_by` it. Peers without `host_fp` (older versions) are summed as before. Subagent runs are concatenated, de-duplicated on `agent_id`, sorted newest first and limited to the window. Local `meta` is kept; if this computer does not have the client installed, `subagent_tokens_attributed` is true when any peer run has tokens. opencode `cost_reported` is false if any computer has tokens with cost 0. `status` is the local status, or `"ok (from other computers)"` when not installed locally |
+| Cursor | Per (series key, minute) the cell with the largest token total (input + output + cache) wins; ties go to larger cost, then larger requests. The winning cell supplies input, output, cache, cache_read, cost and requests. Each `sub_x` is `min(winning total of x, max of sub_x over all cells)`. Runs are the union by `agent_id`, preferring a record with non-null tokens, else the newest. The same conversation seen on two computers can appear twice: Cursor agent ids are hashed per computer (`sha256(machine_id:id)`, for privacy), so run de-duplication across computers cannot match and the union can list a run once per computer. Cell totals are unaffected (largest wins) |
+| Plans (Claude, Cursor) | Samples are the union of local samples (last 30 days) and peer samples, de-duplicated on `round(t)`; current pools come from the newest sample from any computer, reset times are the union, `last_lookup` is the newest across computers, `next_lookup` and `status` are local. Computers on different accounts would interleave (not supported) |
+
+### Shared folder layout
+
+```
+<synced folder>/token-burn/
+  README.txt
+  machines/<machine_id>.json.gz     written only by that computer
+  control/<machine_id>.json         written by any computer
+```
+
+`machine_id` matches `^[0-9a-f]{32}$` and is the only thing ever used to build a path; display names never touch paths. In `machines/`, any name not exactly `<id>.json.gz` (conflict copies, `.tmp*`, iCloud stubs) is ignored and counted in `ignored_files`; an iCloud stub `.<id>.json.gz.icloud` reports "not downloaded yet".
+
+### Machine file `machines/<id>.json.gz` (gzip level 6, `mtime=0`, JSON)
+
+```json
+{"format": "token-burn-machine", "schema": 1,
+ "machine_id": "3f2a9c0e5b7d4e1fa0b1c2d3e4f5a6b7", "display_name": "Office PC", "hostname": "OFFICE-PC",
+ "host_fp": "0f1e2d3c4b5a6978", "os": "Windows 11", "app_version": "0.2.0", "written_at": "2026-11-05T03:00:00Z",
+ "write_token": "9f1c2a7b3d4e5f60", "minutes": 43200,
+ "platforms": {
+  "claude": {"installed": true, "status": "ok",
+   "series": [{"key": "claude-opus-5-5-medium", "model": "claude-opus-5-5", "effort": "medium",
+     "m": [29631234, 29631240], "input": [120, 80], "output": [900, 400], "cache": [337285, 110740],
+     "cache_read": [300000, 100000], "cost": [0.764384, 0.057803], "requests": [3, 1],
+     "sub_input": [0, 10], "sub_output": [0, 50], "sub_cache": [0, 2000], "sub_cache_read": [0, 1800], "sub_cost": [0.0, 0.0012]}],
+   "subagent_runs": [{"agent_id": "b81f0c2e9a7d4c11", "agent_name": "explore \· b81f0c2", "agent_type": "explore",
+     "model": "claude-sonnet-5", "effort": "medium", "t": "2026-11-05T02:40:00Z", "status": "completed",
+     "input": 1200, "output": 3400, "cache": 250000, "cost": 0.41, "cost_estimated": false}],
+   "plan": {"last_lookup": "2026-11-05T02:55:00Z",
+            "samples": [[1793500000.0, {"five_hour": {"pct": 9.0, "resets_at": "2026-11-05T06:29:59Z"}}]]}},
+  "cursor": {"installed": false},
+  "opencode": {"installed": true, "status": "ok", "series": [], "subagent_runs": [], "plan": {"last_lookup": null, "samples": []}}}}
+```
+
+- `m` is absolute epoch minutes. Series are built from this computer's own payloads before merging, so merged data is never re-exported.
+- Never written: `session_id`, `meta`, file counts, paths, prompts, titles, credentials. `agent_id` is `sha256(machine_id + ":" + original_id).hexdigest()[:16]` and `agent_name` is rebuilt as `<type or "subagent"> \· <hashed id[:7]>`. `status` is trimmed to 120 characters with control characters removed.
+- Plan samples are raw `(t, pools)`, thinned to one per 5 minutes after 2 days; per pool only a finite `pct` and a `resets_at` string of at most 40 characters are kept.
+- `host_fp` (optional, 16 lowercase hex; ignored when invalid) identifies the physical computer: the first 16 hex of SHA-256 of `token-burn-host-fp-v1:` plus the OS machine id (Windows `MachineGuid` read-only from the registry, macOS `IOPlatformUUID` from `ioreg`, Linux `/etc/machine-id` or `/var/lib/dbus/machine-id`), or of the host name and OS when none is readable. The raw id is never exported. Older files have none.
+- A computer adopted after a reinstall merges `data_dir/adopted-<id>.json.gz` into its export by per-cell maximum; the file is deleted once all its minutes are older than 30 days.
+- Writing: a temp file `machines/.tmp-<id>-<pid>.json.gz` then `os.replace` with retries; own temp files older than 1 hour are deleted; POSIX file mode 0600 and directories 0700 (best effort). A write happens at most every 300 s, only when the SHA-256 of the canonical body (sorted keys, without `written_at` and `write_token`) changed, or when the heartbeat is due (`HEARTBEAT_S` = 1800 s since the last write).
+
+### Control file `control/<id>.json` (plain JSON, 4 KB cap)
+
+```json
+{"format": "token-burn-control", "schema": 1, "machine_id": "3f2a...", "state": "active",
+ "display_name": "Old office PC", "by": "<writer machine id>", "at": "2026-11-05T03:00:00Z"}
+```
+
+`state` is `active`, `retired` (data still counts, no stale warning, listed and toggleable) or `removed` (tombstone: peers ignore the computer; the owner stops exporting and reports it was removed). Rejoining deletes the tombstone and creates a new id.
+
+### Validation caps for peer files (`collector/sync/validate.py`)
+
+| Limit | Value |
+|---|---|
+| Compressed file size | 16 MiB |
+| Decompressed size | 64 MiB (read in 1 MiB chunks, aborted above) |
+| Machine files read per pass | 64 (newest first; beyond that "too many computers") |
+| Series per platform | 300; each array at most 50,000 entries, all equal length |
+| Subagent runs per platform | 5,000 |
+| Plan samples | 20,000; at most 20 pools each; `pct` finite 0 to 1000 |
+| Values | tokens integer 0 to 1e12, cost finite 0 to 1e6, requests 0 to 1e7; each `sub_*` clamped to its total |
+| Strings | name 40, hostname 64, os 40, version 20, model, key and effort 120, status 120; control characters removed |
+| Minutes | strictly ascending integers; those outside `[now_min - MINUTES + 1, now_min + 5]` are dropped, not rejected |
+| Clock skew | `written_at` more than 600 s ahead gives "clock is ahead by N min"; last seen is clamped to now |
+
+Files must be regular (symlinks skipped), start with `format` `token-burn-machine` and `schema` 1 (a larger schema shows "made by a newer Token Burn; update this computer"), and carry a `machine_id` equal to the file name. Unknown platforms and fields are ignored. A failing file falls back to the last good copy in `data_dir/peer-cache/<id>.json.gz`, with a message. Nothing from the shared folder is ever evaluated, unpickled, imported or executed.
+
+### `config.json` (data folder)
+
+See [CONFIGURATION](CONFIGURATION.md). Keys: `version` (schema version, stays 1), `app_version` (the Token Burn version that last ran the installer), `install_dir`, `data_dir`, and `sync` (`enabled`, `folder`, `machine_id`, `machine_name`, `joined_at`, `adopted`). Store key-value entries: `sync:last_hash`, `sync:last_write`, `sync:last_token`, `sync:conflict`.
+
+### Conflicting ids
+
+Before writing, the existing own file's header is read. If its `write_token` differs from `sync:last_token` and its `written_at` is later than `sync:last_write`, another computer is using this id: exports stop (merging continues) until `token-burn sync reset-id`. The first write after install finding an existing file proceeds when the host name matches (a reinstall) and is a conflict when it differs.
+
 ## Server (`server.py`)
 
 - Binds to `127.0.0.1` only. A client that is not loopback gets a 403. Only GET and HEAD are allowed; anything else gets a 405.
@@ -354,4 +468,4 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
   - `loIdx = endIdx - W + 1`
 - **Charts:** cumulative lines per series inside the window, with Chart.js LTTB decimation at 500 samples.
 - **Refresh:** the page fetches `/api/usage.json` every 60 s with `cache: 'no-store'` and shows a "Next refresh in" countdown.
-- **localStorage:** the window and metric are remembered in `token-burn.window` and `token-burn.metric`, and the visible providers in `token-burn.providers`, accessed inside try/catch.
+- **localStorage:** the window and metric are remembered in `token-burn.window` and `token-burn.metric`, the visible providers in `token-burn.providers`, and the computers switched off in `token-burn.machines` (an object `{machineId: false}`), accessed inside try/catch.

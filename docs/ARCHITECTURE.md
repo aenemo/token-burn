@@ -67,7 +67,7 @@ flowchart LR
 | Server | `server.py` | Loopback-only static and JSON server |
 | Frontend | `web/` | One page, up to three columns |
 | Hooks | `hooks/` | Claude and Cursor subagent recorders, both Python |
-| CLI and schedulers | `token_burn/` | `token-burn` command (install, uninstall, status, serve, collect, hook) and per-OS scheduler back ends (Task Scheduler on Windows, launchd on macOS, systemd user units or cron on Linux) |
+| CLI and schedulers | `token_burn/` | `token-burn` command (install wizard, uninstall, status, serve, collect, hook, sync, data) and per-OS scheduler back ends (Task Scheduler on Windows, launchd on macOS, systemd user units or cron on Linux) |
 
 ## Data flow, every minute
 
@@ -152,6 +152,41 @@ Done in `aggregate.allocate_costs`.
 
 This changes Cursor from every minute to about every 10 minutes (see `docs/CONFIGURATION.md`).
 
+## Multi-computer sync
+
+Sync lives entirely in the collector pass. The server and frontend only read `usage.json`; there is no new listener, and when sync is off the output is unchanged. The format and merge rules are in `docs/DATA-CONTRACT.md` and the user guide is `docs/SYNC.md`.
+
+```mermaid
+flowchart LR
+    ST[("store.py<br/>data folder usage.db")] --> AG["aggregate.py<br/>local payloads"]
+    AG --> EX["sync/export.py<br/>build_export, maybe_write"]
+    EX -->|"every 5 min if changed,<br/>30 min heartbeat"| SH[("shared folder<br/>token-burn/machines/id.json.gz")]
+    SH --> PE["sync/peers.py<br/>scan, validate, cache"]
+    PE --> ME["sync/merge.py<br/>add Claude and opencode,<br/>max for Cursor"]
+    AG --> ME
+    ME --> JSON["usage.json<br/>+ machines, sync"]
+    JSON --> SRV["server.py"] --> WEB["web/ + machines.js"]
+```
+
+| Module | Role |
+|---|---|
+| `collector/sync/__init__.py` | Facade `apply(store, payloads, now, log, data_dir=None)`. Loads config, builds and writes this computer's export from deep-copied local payloads, scans peers, merges each platform and builds the machines list. Never raises: on error `sync.status` reads "sync failed (<ExcName>)" and payloads are unchanged |
+| `collector/sync/config.py` | `config.json` load and save, machine ids, name cleaning, folder normalisation |
+| `collector/sync/validate.py` | Capped gzip reading and strict validation of peer machine and control files |
+| `collector/sync/export.py` | Builds the privacy-trimmed export, throttled atomic writes, conflict detection, adopted history |
+| `collector/sync/peers.py` | Scans `machines/` and `control/`, last-good cache, retire and remove files |
+| `collector/sync/merge.py` | Pure merge of local and peer data into platform payloads and the machines list |
+| `collector/aggregate.py` | `build_usage_json(payloads, now, machines=None, sync=None)` adds the new keys only when given; `plan_block_from_samples` and `raw_plan_samples` support plan merging |
+| `token_burn/installer.py` | Install wizard: install and data folders, sync mode, folder choice, joining, adoption, naming, upgrade, scheduler check |
+| `token_burn/install_location.py` | Per-OS default folders, validation, copy and upgrade, Start Menu and Apps entries, `.desktop` file, `~/.local/bin` symlink, `location.json` pointer |
+| `token_burn/folder_picker.py` | Native folder dialogs per OS (never `shell=True`), synced-root detection, `looks_synced` |
+| `token_burn/sync_cli.py` | `token-burn sync ...` subcommands |
+| `web/js/machines.js` | Client-side filtering of Claude and opencode by computer; the toggle row and Computers table are in `app.js` |
+
+Data flow with sync on, each minute: the collector builds local payloads as usual, `sync.apply` exports this computer's data (when due), reads the other computers' files, adds Claude and opencode, takes the larger value for Cursor, merges plan samples, and `build_usage_json` writes the result with the `machines` and `sync` keys. Merged data is never re-exported, because the export is built from the local payloads before merging.
+
+Install flow (zip builds): the wizard runs from wherever the zip was unzipped, copies the program folder to the chosen location (temp sibling, then rename), registers tasks and hooks pointing at the target folder, runs the collector task once to check the scheduler, then runs `sync now`. Scheduled tasks use `token-burnw.exe` and never prompt.
+
 ## Subagent attribution
 
 - **Claude.** Subagent usage is known per line, so each run's input, output, cache and cost are recomputed from `usage_minute` rows with that agent id. The hook log supplies the agent type and a token fallback. Agent name is `<type> · <first 7 characters of id>`.
@@ -169,7 +204,9 @@ This changes Cursor from every minute to about every 10 minutes (see `docs/CONFI
 | `web/js/providers/claude.js` | Warm palette, "Main session" label, Claude notes |
 | `web/js/providers/cursor.js` | Cool palette, "Main agent" label, Cursor notes (including the subagent n/a note) |
 | `web/js/providers/opencode.js` | opencode palette, labels and notes (zero-cost note, no plan data message) |
-| `web/js/app.js` | Refresh loop, controls, and the per-platform column |
+| `web/js/machines.js` | Per-computer filtering of Claude and opencode (sync only) |
+| `web/js/burn.js`, `web/css/burn.css` | Decorative header animation: compositor-only CSS keyframes, JS only pauses it when the tab is hidden or reduced motion is set |
+| `web/js/app.js` | Refresh loop, controls, the computer toggle row and Computers table, and the per-platform column |
 | `web/css/app.css` | Layout and light and dark theme variables |
 
 Each column, top to bottom: summary tiles, usage graph with model chips, plan usage (chart and table), Statistics table, Primary agent table, Subagents table. The columns stack below 1100 px.

@@ -5,11 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Token Burn</title>
 <link rel="stylesheet" href="/web/css/app.css">
+<link rel="stylesheet" href="/web/css/burn.css">
 </head>
 <body>
 <div class="wrap">
   <header class="top">
-    <h1>Token Burn</h1>
+    <div class="brand">
+      <h1>Token Burn</h1>
+      <span class="burn" aria-hidden="true">
+        <span class="burn-glow"></span>
+        <span class="blk b1"></span><span class="blk b2"></span><span class="blk b3"></span>
+      </span>
+    </div>
     <p class="note tagline">Collects token usage and costs for Claude, Cursor and Opencode.</p>
     <div class="meta">
       <span>Last updated: <span id="updated">loading</span></span>
@@ -26,6 +33,7 @@
         <button class="btn" id="mTokens" type="button" aria-pressed="true">Tokens</button>
         <button class="btn" id="mCost" type="button" aria-pressed="false">Cost (USD)</button>
       </div>
+      <div class="toggle machines" id="machines" role="group" aria-label="Computers shown" hidden></div>
     </div>
     <p class="note hdr-note">Viewing or refreshing this dashboard does not spend model tokens. It only reads usage data.</p>
   </header>
@@ -34,6 +42,12 @@
 
   <div id="noclients" class="banner warn" hidden>None of Claude Code, Cursor or opencode was found on this PC. Install and sign in to any of them and its usage appears here within a minute or two.</div>
   <div id="alloff" class="banner warn" hidden>Turn on a provider above to see its usage.</div>
+  <div id="sync-warn" class="banner warn" hidden></div>
+  <details id="machines-box" class="card machines-card" hidden>
+    <summary>Computers</summary>
+    <div id="machines-table"></div>
+    <div id="sync-notes" class="notes"></div>
+  </details>
   <main class="cols">
     <section id="col-claude"></section>
     <section id="col-cursor"></section>
@@ -46,9 +60,11 @@
 <script src="/web/js/stats.js"></script>
 <script src="/web/js/charts.js"></script>
 <script src="/web/js/tables.js"></script>
+<script src="/web/js/machines.js"></script>
 <script src="/web/js/providers/claude.js"></script>
 <script src="/web/js/providers/cursor.js"></script>
 <script src="/web/js/providers/opencode.js"></script>
 <script src="/web/js/app.js"></script>
+<script src="/web/js/burn.js"></script>
 </body>
 </html>

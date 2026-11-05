@@ -78,3 +78,9 @@ def status():
         loaded = run(["launchctl", "print", "%s/%s" % (_domain(), label)])[0] == 0
         parts.append("%s: %s" % (label, "loaded" if loaded else "not loaded"))
     return "; ".join(parts)
+
+
+def check_refresh():
+    """Run the refresh agent once. Returns (ok, detail)."""
+    rc, out = run(["launchctl", "kickstart", "-k", "%s/%s" % (_domain(), REFRESH_LABEL)])
+    return (True, "ok") if rc == 0 else (False, "launchctl could not start the agent (%s)" % out.strip())
