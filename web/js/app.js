@@ -655,7 +655,15 @@
     var bad = !!sync && sync.enabled !== false && sync.status != null && sync.status !== 'ok';
     warn.hidden = !bad;
     warn.textContent = bad ? 'Sync: ' + String(sync.status) : '';
-    card.hidden = !(multi || bad || msgs.length);
+    var syncOn = !!sync && sync.enabled !== false;
+    card.hidden = !(multi || bad || msgs.length || (syncOn && list.length));
+    // The summary names this computer, so a single synced computer still shows which name it shares as.
+    var self = list.filter(function (m) { return m.is_self; })[0];
+    var summary = card.querySelector('summary');
+    if (summary) {
+      summary.textContent = 'Computers (' + list.length + ')' +
+        (self ? ': this computer is ' + String(self.name || '') : '');
+    }
     var notes = $('sync-notes');
     notes.textContent = '';
     msgs.forEach(function (t) { notes.appendChild(el('p', 'note', String(t))); });
