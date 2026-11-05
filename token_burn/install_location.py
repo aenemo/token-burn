@@ -13,7 +13,7 @@ import sys
 import time
 from pathlib import Path
 
-from token_burn import folder_picker, paths
+from token_burn import folder_picker, paths, proc
 
 APP_NAME = "Token Burn"
 PUBLISHER = "aenemo"
@@ -26,6 +26,8 @@ DIST_ENTRIES = ("token-burn.exe", "token-burnw.exe", "token-burn", "_internal", 
                 "Install Token Burn.command")
 LOCK_RETRIES = 10
 LOCK_DELAY_S = 3.0
+PROCESS_WAIT_S = 10.0       # how long to wait for programs in the folder to exit before ending them
+PROCESS_STEP_S = 0.5
 
 
 class InstallLocationError(Exception):
@@ -45,12 +47,20 @@ class RollbackError(InstallLocationError):
 class LockedError(InstallLocationError):
     """Files in the program folder are in use."""
 
-    def __init__(self, folder):
+    def __init__(self, folder, holders=None):
         self.folder = str(folder)
+        self.holders = list(holders or [])
+        if self.holders:
+            who = "Still running from that folder: %s. Close or end %s, then run the installer again." % (
+                ", ".join("%s (PID %d)" % (n, pid) for pid, n, _exe in self.holders),
+                "it" if len(self.holders) == 1 else "them")
+        else:
+            who = ("No program running from that folder was found, so it may be an Explorer window, a terminal "
+                   "opened in that folder, an editor, or antivirus or OneDrive scanning it. Close those, wait a "
+                   "moment, then run the installer again.")
         InstallLocationError.__init__(
-            self, "Token Burn cannot replace the files in %s because a program is using them. Close any "
-                  "window or program using that folder (for example a running token-burn.exe or a terminal "
-                  "opened there), then run the installer again." % self.folder)
+            self, "Token Burn cannot replace the files in %s because a program is using them. %s"
+                  % (self.folder, who))
 
 
 # ---- standard locations
@@ -136,7 +146,28 @@ def _legacy_layout(p):
         names = os.listdir(str(p))
     except OSError:
         return False
-    return (p / "_internal").is_dir() and _has_exe(p) and all(n in DIST_ENTRIES for n in names)
+    return (p / "_internal").is_dir() and _has_exe(p) and all(
+        n in DIST_ENTRIES or _tree_is_empty(p / n) for n in names)
+
+
+def _tree_is_empty(p):
+    """A real directory holding no files at all, however deeply nested (stray empty folders do not count)."""
+    p = Path(p)
+    try:
+        if p.is_symlink() or not p.is_dir():
+            return False
+        return all(_tree_is_empty(c) for c in p.iterdir())
+    except OSError:
+        return False
+
+
+def unexpected_entries(path):
+    """Names in a folder that are not release files and not empty directories."""
+    try:
+        return sorted(n for n in os.listdir(str(path))
+                      if n not in DIST_ENTRIES and n != MARKER and not _tree_is_empty(Path(path) / n))
+    except OSError:
+        return []
 
 
 def is_install(path):
@@ -280,9 +311,13 @@ def check_install_dir(path, data_dir=None, src_dir=None):
     if data_dir is not None and is_inside(data_dir, p):
         return None, "The data folder is inside that folder, and upgrades replace it. Choose another folder."
     if p.is_dir() and not _is_empty_dir(p) and not is_install(p):
+        odd = unexpected_entries(p)
+        found = ""
+        if odd:
+            found = " It holds: %s%s." % (", ".join(odd[:5]), " and %d more" % (len(odd) - 5) if len(odd) > 5 else "")
         return None, ("That folder is not empty and is not a Token Burn install that Token Burn can manage "
                       "(an install holds the program, an _internal folder and nothing else it did not put "
-                      "there). Choose an empty or new folder.")
+                      "there).%s Choose an empty or new folder." % found)
     if not is_writable(p):
         return None, ("Token Burn cannot write to that folder (it may need administrator rights). "
                       "Choose a folder in your user profile.")
@@ -419,7 +454,33 @@ def rename_retry(src, dst, folder, say=None, retries=LOCK_RETRIES, delay=LOCK_DE
                     "token-burn.exe or a terminal opened there)..." % folder)
                 told = True
             sleep(delay)
-    raise LockedError(folder)
+    try:
+        holders = proc.processes_using(folder)
+    except Exception:
+        holders = []
+    raise LockedError(folder, holders)
+
+
+def release_folder(folder, say=None, wait_s=PROCESS_WAIT_S, sleep=time.sleep):
+    """Make sure nothing runs from folder before its files are replaced or deleted. Waits up to wait_s for
+    programs whose executable is inside folder to exit on their own (the server just stopped, a hook that is
+    finishing), then ends the ones left and waits briefly again. Only processes running from folder are ever
+    ended, never this process, its parent or anything it descends from. Returns what is still running."""
+    say = say or (lambda m: None)
+    for _ in range(max(1, int(wait_s / PROCESS_STEP_S))):
+        if not proc.processes_using(folder):
+            return []
+        sleep(PROCESS_STEP_S)
+    for pid, name, _exe in proc.processes_using(folder):
+        proc.terminate_pid(pid)
+        say("Stopped %s (PID %d)" % (name, pid))
+    left = []
+    for _ in range(max(1, int(5.0 / PROCESS_STEP_S))):
+        left = proc.processes_using(folder)
+        if not left:
+            return []
+        sleep(PROCESS_STEP_S)
+    return left
 
 
 def _write_in_place_manifest(dst, version):

@@ -1,3 +1,4 @@
+import importlib
 import os
 import sys
 import time
@@ -708,3 +709,146 @@ class TestDataPointer(Isolated):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FakeTable:
+    """A fake process table: list of [pid, ppid, exe]; terminate_pid removes the process (or does not)."""
+
+    def __init__(self, rows, stubborn=()):
+        self.rows = [list(r) for r in rows]
+        self.stubborn = set(stubborn)
+        self.killed = []
+
+    def listing(self):
+        return [tuple(r) for r in self.rows]
+
+    def terminate(self, pid, grace=3.0):
+        self.killed.append(pid)
+        if pid not in self.stubborn:
+            self.rows = [r for r in self.rows if r[0] != pid]
+
+
+class TestReleaseFolder(Isolated):
+    def setUp(self):
+        Isolated.setUp(self)
+        self.prog = make_app(self.tmp / "Programs" / "token-burn")
+        self.exe = str(self.prog / "token-burnw.exe")
+        self.hook = str(self.prog / "token-burn.exe")
+        self.outside = str(self.tmp / "elsewhere" / "token-burnw.exe")
+
+    def use(self, table):
+        self.table = table
+        real = importlib.import_module("token_burn.proc")
+        self.patch(real, "list_processes", side_effect=table.listing)
+        self.patch(real, "terminate_pid", side_effect=table.terminate)
+        self.patch(il, "proc", new=real)
+
+    def test_only_processes_inside_the_folder_are_found(self):
+        self.use(FakeTable([(500, 1, self.exe), (501, 1, self.outside), (502, 1, str(self.prog) + "-old" + os.sep + "token-burn.exe"),
+                            (503, 1, str(self.prog / "_internal" / "x.exe")), (504, 1, "")]))
+        found = il.proc.processes_using(self.prog)
+        self.assertEqual([p for p, _n, _e in found], [500, 503])
+        self.assertEqual(found[0][1], "token-burnw.exe")
+
+    def test_current_process_parent_and_ancestors_excluded(self):
+        me = os.getpid()
+        self.use(FakeTable([(me, 900, self.exe), (os.getppid(), 1, self.exe), (900, 901, self.exe),
+                            (901, 1, self.exe), (777, 1, self.exe)]))
+        self.assertEqual([p for p, _n, _e in il.proc.processes_using(self.prog)], [777])
+
+    def test_terminates_only_what_is_inside_and_says_so(self):
+        self.use(FakeTable([(500, 1, self.exe), (501, 1, self.outside), (os.getpid(), 1, self.hook)]))
+        said, naps = [], []
+        left = il.release_folder(self.prog, said.append, wait_s=1.0, sleep=naps.append)
+        self.assertEqual(left, [])
+        self.assertEqual(self.table.killed, [500])
+        self.assertIn("Stopped token-burnw.exe (PID 500)", said)
+        self.assertEqual(len(naps), 2)                       # waited its full 1.0 s (2 x 0.5 s) first
+        self.assertEqual([r[0] for r in self.table.rows], [501, os.getpid()])
+
+    def test_nothing_to_do_returns_at_once(self):
+        self.use(FakeTable([(501, 1, self.outside)]))
+        naps = []
+        self.assertEqual(il.release_folder(self.prog, None, sleep=naps.append), [])
+        self.assertEqual(naps, [])
+        self.assertEqual(self.table.killed, [])
+
+    def test_waits_for_processes_that_exit_on_their_own(self):
+        self.use(FakeTable([(500, 1, self.exe)]))
+        naps = []
+
+        def nap(s):
+            naps.append(s)
+            if len(naps) == 3:
+                self.table.rows = []
+        self.assertEqual(il.release_folder(self.prog, lambda m: None, sleep=nap), [])
+        self.assertEqual(self.table.killed, [])                # it left by itself, so nothing was ended
+        self.assertEqual(len(naps), 3)
+
+    def test_returns_what_will_not_die(self):
+        self.use(FakeTable([(500, 1, self.exe)], stubborn=[500]))
+        left = il.release_folder(self.prog, lambda m: None, wait_s=0.5, sleep=lambda s: None)
+        self.assertEqual([p for p, _n, _e in left], [500])
+
+    def test_locked_error_lists_the_holders(self):
+        self.use(FakeTable([(500, 1, self.exe), (501, 1, self.hook)]))
+        with self.assertRaises(il.LockedError) as cm:
+            il.rename_retry(self.tmp / "nope", self.tmp / "dest", self.prog, None, retries=2, delay=0,
+                            sleep=lambda s: None)
+        msg = str(cm.exception)
+        self.assertIn(str(self.prog), msg)
+        self.assertIn("token-burnw.exe (PID 500)", msg)
+        self.assertIn("token-burn.exe (PID 501)", msg)
+
+    def test_locked_error_without_holders_names_likely_causes(self):
+        self.use(FakeTable([]))
+        with self.assertRaises(il.LockedError) as cm:
+            il.rename_retry(self.tmp / "nope", self.tmp / "dest", self.prog, None, retries=2, delay=0,
+                            sleep=lambda s: None)
+        msg = str(cm.exception)
+        for word in ("Explorer", "terminal", "editor", "antivirus", str(self.prog)):
+            self.assertIn(word, msg)
+
+    def test_uninstall_path_releases_before_deleting(self):
+        from token_burn import installer
+        order = []
+        with mock.patch.object(il, "release_folder", side_effect=lambda *a, **k: order.append("release") or []), \
+                mock.patch.object(il, "remove_program_dir", side_effect=lambda *a, **k: order.append("remove")):
+            installer._release_and_remove(self.prog, lambda m: None, self.data)
+        self.assertEqual(order, ["release", "remove"])
+
+
+class TestLegacyDetection(Isolated):
+    def test_empty_stray_dirs_are_accepted_and_kept(self):
+        d = make_app(self.tmp / "v01")
+        (d / "empty").mkdir()
+        (d / "nested" / "deeper").mkdir(parents=True)
+        self.assertTrue(il.is_install(d))
+        p, err = il.check_install_dir(d)
+        self.assertIsNone(err)
+        self.assertTrue((d / "empty").is_dir())
+        self.assertTrue((d / "nested" / "deeper").is_dir())
+
+    def test_stray_file_refused_and_named(self):
+        d = make_app(self.tmp / "v01")
+        (d / "empty").mkdir()
+        (d / "notes.txt").write_text("x")
+        (d / "nonempty").mkdir()
+        (d / "nonempty" / "f.dat").write_text("x")
+        self.assertFalse(il.is_install(d))
+        p, err = il.check_install_dir(d)
+        self.assertIsNone(p)
+        self.assertIn("notes.txt", err)
+        self.assertIn("nonempty", err)
+        self.assertNotIn("empty,", err.replace("nonempty", ""))
+
+    def test_refusal_lists_at_most_five(self):
+        d = self.tmp / "docs"
+        d.mkdir()
+        for i in range(8):
+            (d / ("f%d.txt" % i)).write_text("x")
+        p, err = il.check_install_dir(d)
+        self.assertIn("f0.txt", err)
+        self.assertIn("f4.txt", err)
+        self.assertNotIn("f5.txt", err)
+        self.assertIn("3 more", err)

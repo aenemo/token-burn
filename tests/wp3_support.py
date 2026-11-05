@@ -80,6 +80,8 @@ class Isolated(unittest.TestCase):
         self.backend = fake_backend()
         self.patch(installer, "get_backend", return_value=self.backend)
         self.patch(installer, "proc")
+        self.patch(il, "proc")
+        il.proc.processes_using.return_value = []
         installer.proc.wait_health.return_value = True
         installer.proc.stop_server.return_value = False
         self.browser = self.patch(installer.webbrowser, "open")

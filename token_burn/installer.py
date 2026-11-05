@@ -751,6 +751,7 @@ def _execute(con, args, cfg, cur_data, data_dir, data_move, program, src, upgrad
         if upgrade:
             say("Upgrading Token Burn in %s" % program)
             stop_background(backend, say)
+            il.release_folder(program, say)
         try:
             exclude = [data_dir, cur_data]
             if upgrade:
@@ -851,6 +852,8 @@ def _scheduler_failed(con, args, backend, program, src, created, data_dir, cfg, 
         return False, check[1], program
     try:
         if il.is_install(target):
+            stop_background(backend, say)
+            il.release_folder(target, say)
             il.upgrade_files(src, target, say, [data_dir], version=ver)
         else:
             il.install_files(src, target, say, [data_dir], version=ver)
@@ -927,6 +930,14 @@ def _purge_ok(path):
     return r.parent != r and len(r.parts) >= 3 and not il.same_path(r, Path.home())
 
 
+def _release_and_remove(install_dir, say, data_dir):
+    """End anything still running from the program folder (never this process), then delete it."""
+    left = il.release_folder(install_dir, say)
+    if left:
+        say("Still running from %s: %s" % (install_dir, ", ".join("%s (PID %d)" % (n, p) for p, n, _e in left)))
+    return il.remove_program_dir(install_dir, say, data_dir)
+
+
 def _uninstall(args, con, after=None):
     from collector import util
     from collector.sync import config, peers
@@ -993,9 +1004,9 @@ def _uninstall(args, con, after=None):
         if go and after is not None and getattr(args, "interactive", False):
             # This window is still open and the program is running from the folder: delete after the pause.
             say("The program folder will be deleted when this window closes: %s" % install_dir)
-            after.append(lambda: il.remove_program_dir(install_dir, say, data_dir))
+            after.append(lambda: _release_and_remove(install_dir, say, data_dir))
         elif go:
-            il.remove_program_dir(install_dir, say, data_dir)
+            _release_and_remove(install_dir, say, data_dir)
         else:
             say("Program folder kept at %s" % install_dir)
     return 0
