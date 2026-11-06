@@ -11,6 +11,19 @@ from token_burn import install_location as il
 from tests.wp3_support import Isolated
 
 
+_real_readlink = os.readlink
+
+
+def fake_readlink(link, target):
+    """os.readlink stand-in: link points at target, every other path behaves normally (Python 3.9's
+    Path.resolve calls readlink on each folder of a path)."""
+    def readlink(p, *a, **kw):
+        if str(p) == str(link):
+            return str(target)
+        return _real_readlink(p, *a, **kw)
+    return readlink
+
+
 def make_app(folder, marker="token-burn.exe", extra=True):
     """A fake unzipped PyInstaller folder."""
     folder = Path(folder)
@@ -315,7 +328,7 @@ class TestLinuxIntegration(Isolated):
             # only the command link is a symlink; everything else must still resolve normally
             link = str(self.home / ".local" / "bin" / "token-burn")
             with mock.patch.object(il.os.path, "islink", side_effect=lambda p: str(p) == link), \
-                    mock.patch.object(il.os, "readlink", return_value=str(prog / "token-burn")), \
+                    mock.patch.object(il.os, "readlink", side_effect=fake_readlink(link, prog / "token-burn")), \
                     mock.patch.object(il.os, "unlink", side_effect=lambda p: real_unlink(p) if str(p).endswith(".desktop") else None) as unlink:
                 msgs = il.unregister_os_integration(prog)
             self.assertFalse(entry.exists())
@@ -605,15 +618,15 @@ class TestRemoveOnlyOurs(Isolated):
                 mock.patch.object(il.os.path, "islink", side_effect=lambda p: str(p) == str(link)), \
                 mock.patch.object(il.os.path, "lexists", return_value=True), \
                 mock.patch.object(il.os, "unlink") as unlink:
-            with mock.patch.object(il.os, "readlink", return_value=str(self.tmp / "elsewhere" / "token-burn")):
+            with mock.patch.object(il.os, "readlink", side_effect=fake_readlink(link, self.tmp / "elsewhere" / "token-burn")):
                 msgs = il.unregister_os_integration(prog)
             unlink.assert_not_called()
             self.assertTrue(any("left alone" in m for m in msgs))
             self.assertFalse(any("Command link: removed" in m for m in msgs))
-            with mock.patch.object(il.os, "readlink", return_value=str(prog / "token-burn")):
+            with mock.patch.object(il.os, "readlink", side_effect=fake_readlink(link, prog / "token-burn")):
                 il.unregister_os_integration(None)           # no recorded install: nothing is removed
             unlink.assert_not_called()
-            with mock.patch.object(il.os, "readlink", return_value=str(prog / "token-burn")):
+            with mock.patch.object(il.os, "readlink", side_effect=fake_readlink(link, prog / "token-burn")):
                 il.unregister_os_integration(prog)
             unlink.assert_any_call(str(link))
 

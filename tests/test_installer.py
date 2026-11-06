@@ -552,8 +552,13 @@ class TestFrozenInstall(InstallerCase):
         cfg = self.cfg()
         self.assertEqual(cfg["install_dir"], str(self.target))
         self.assertEqual(cfg["app_version"], VERSION)
-        self.winreg.CreateKeyEx.assert_called_once()
-        self.assertTrue(il.start_menu_shortcut().is_file())
+        if sys.platform.startswith("win"):  # Apps and features entry and Start Menu shortcut
+            self.winreg.CreateKeyEx.assert_called_once()
+            self.assertTrue(il.start_menu_shortcut().is_file())
+        else:
+            self.winreg.CreateKeyEx.assert_not_called()
+            if sys.platform != "darwin":  # Linux gets a desktop entry; macOS has no OS integration
+                self.assertTrue(il.desktop_entry_path().is_file())
         self.backend.check_refresh.assert_called_once()
 
     def test_yes_without_install_dir_uses_the_recommended_folder(self):
