@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import server  # noqa: E402
+from token_burn import __version__  # noqa: E402
 
 
 class ServerTests(unittest.TestCase):
@@ -20,7 +21,7 @@ class ServerTests(unittest.TestCase):
         cls.web = cls.tmp / "web"
         (cls.web / "js").mkdir(parents=True)
         cls.data.mkdir()
-        (cls.web / "index.html").write_text("<html>hi</html>", encoding="utf-8")
+        (cls.web / "index.html").write_text("<html>hi {{VERSION}}</html>", encoding="utf-8")
         (cls.web / "js" / "app.js").write_text("var a=1;", encoding="utf-8")
         (cls.tmp / "secret.txt").write_text("secret", encoding="utf-8")
         cls.srv = server.make_server(0, cls.data, cls.web)
@@ -50,9 +51,19 @@ class ServerTests(unittest.TestCase):
         for p in ("/", "/index.html"):
             s, h, b = self.req("GET", p)
             self.assertEqual(s, 200)
-            self.assertEqual(b, b"<html>hi</html>")
+            self.assertEqual(b, ("<html>hi %s</html>" % __version__).encode("utf-8"))
             self.assertIn("text/html", h["content-type"])
             self.assertEqual(h["cache-control"], "no-store")
+            self.assertEqual(h["content-length"], str(len(b)))
+
+    def test_real_index_shows_version_in_title_and_heading(self):
+        html = (Path(__file__).resolve().parent.parent / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("<title>Token Burn {{VERSION}}</title>", html)
+        self.assertIn("{{VERSION}}</", html.split("<h1", 1)[1].split("</h1>", 1)[0] + "</")
+
+    def test_pyproject_version_matches_package(self):
+        text = (Path(__file__).resolve().parent.parent / "pyproject.toml").read_text(encoding="utf-8")
+        self.assertIn('version = "%s"' % __version__, text)
 
     def test_static(self):
         s, h, b = self.req("GET", "/web/js/app.js")

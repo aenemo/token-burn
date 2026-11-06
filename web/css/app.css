@@ -55,6 +55,7 @@ body {
 }
 .wrap { max-width: 1800px; margin: 0 auto; }
 h1 { font-size: 20px; margin: 0 0 4px; }
+h1 .ver { color: var(--muted); font-size: 13px; font-weight: 500; margin-left: 2px; }
 h2 { font-size: 17px; margin: 0; }
 h3 { font-size: 15px; margin: 0 0 8px; }
 .meta { color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }

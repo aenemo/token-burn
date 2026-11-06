@@ -21,6 +21,11 @@ from urllib.parse import unquote, urlsplit
 
 ROOT = Path(__file__).resolve().parent
 
+try:
+    from token_burn import __version__ as VERSION
+except ImportError:  # server.py run on its own, without the package beside it
+    VERSION = ""
+
 
 def _web_dir():
     if getattr(sys, "frozen", False):
@@ -125,6 +130,15 @@ class Handler(BaseHTTPRequestHandler):
             ctype += "; charset=utf-8"
         self._send(200, body, ctype)
 
+    def _index(self, path):
+        """The dashboard page, with {{VERSION}} filled in from token_burn.__version__."""
+        try:
+            body = path.read_bytes()
+        except OSError:
+            return self._json(404, {"error": "not found"})
+        body = body.replace(b"{{VERSION}}", VERSION.encode("utf-8"))
+        self._send(200, body, "text/html; charset=utf-8")
+
     def _health(self):
         generated = None
         try:
@@ -145,7 +159,7 @@ class Handler(BaseHTTPRequestHandler):
             path = unquote(urlsplit(self.path).path)
             web = self.server.web_dir
             if path in ("/", "/index.html"):
-                return self._file(web / "index.html")
+                return self._index(web / "index.html")
             if path == "/api/usage.json":
                 p = self.server.data_dir / "usage.json"
                 if not p.is_file():
