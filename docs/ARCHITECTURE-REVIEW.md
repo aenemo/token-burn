@@ -4,8 +4,8 @@ Written 21/10/2026, before the combined dashboard was built. It records how the 
 
 Sources reviewed:
 
-- Claude: `C:\AI-Coding\Personal\Claude Token Usage Graphs` (written below as `claude/...`)
-- Cursor: `C:\AI-Coding\Personal\Token Usage Graph` (written below as `cursor/...`)
+- Claude: the original Claude token usage graph (written below as `claude/...`)
+- Cursor: the original Cursor token usage graph (written below as `cursor/...`)
 
 Line numbers refer to the files as reviewed.
 

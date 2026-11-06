@@ -5,8 +5,8 @@ Supported: Windows 10 or later, macOS 12 or later, and Linux with systemd (cron 
 ## Route 1: PyInstaller zip (no Python needed)
 
 1. Download `token-burn-<version>-<OS>.zip` and `SHA256SUMS` from the GitHub Release. Verify the checksum.
-   - Windows: `certutil -hashfile token-burn-v0.2.1-Windows.zip SHA256`
-   - macOS: `shasum -a 256 token-burn-v0.2.1-macOS.zip`
+   - Windows: `certutil -hashfile token-burn-v0.2.2-Windows.zip SHA256`
+   - macOS: `shasum -a 256 token-burn-v0.2.2-macOS.zip`
    - Linux: `sha256sum -c SHA256SUMS --ignore-missing`
 2. Unzip the whole folder anywhere (your Desktop or Documents is fine, but not straight from inside the zip viewer).
 3. Start the installer:
@@ -71,7 +71,7 @@ Exit codes: 0 ok, 1 error (including a name or id that matches no computer), 2 b
 ## Route 2: pip from source
 
 ```
-git clone <repository-url> token-burn
+git clone https://github.com/aenemo/token-burn.git token-burn
 cd token-burn
 python -m venv .venv
 .venv/bin/pip install .          # Windows: .venv\Scripts\pip install .

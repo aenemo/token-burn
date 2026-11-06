@@ -4,11 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "token-burn"
-version = "0.2.1"
-description = "Claude Cursor Usage: combined Claude Code and Cursor token usage dashboard"
+version = "0.2.2"
+description = "Token Burn: a local dashboard of token usage and costs for Claude Code, Cursor and opencode"
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = []
+authors = [{ name = "aenemo" }]
+license = { text = "MIT" }
+
+[project.urls]
+Homepage = "https://github.com/aenemo/token-burn"
+Repository = "https://github.com/aenemo/token-burn"
+Issues = "https://github.com/aenemo/token-burn/issues"
 
 [project.optional-dependencies]
 keyring = ["keyring"]

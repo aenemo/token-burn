@@ -8,12 +8,10 @@ Every module, script and page in this project follows this file. If code and thi
 - **No em dashes** in any text, comments or docs.
 - **Python 3.9+, standard library only.** No pip dependencies. Frontend is vanilla JS plus the vendored Chart.js 4.4.1. No build step.
 - **Never log** tokens, cookies, prompts or message content.
-- **Source projects are read-only.** Never create, edit, rename, move or delete anything under:
-  - `C:\AI-Coding\Personal\Claude Token Usage Graphs`
-  - `C:\AI-Coding\Personal\Token Usage Graph`
+- **Source projects are read-only.** Never create, edit, rename, move or delete anything in the two original dashboards this project was built from (the Claude and the Cursor token usage graphs).
 
   Reading their files is fine, including their `data\` files, which the parity check reads.
-- All files live under `ROOT = C:\AI-Coding\Personal\OS Agnostic CC Token Tracker`. Installed runtime data lives in the per-user data folder (see `docs/CONFIGURATION.md`); a source checkout can use `ROOT\data\`, which is gitignored and never packed.
+- `ROOT` below means the root of this repository. Installed runtime data lives in the per-user data folder (see `docs/CONFIGURATION.md`); a source checkout can use `ROOT\data\`, which is gitignored and never packed.
 
 ## Constants (`collector/util.py`)
 
