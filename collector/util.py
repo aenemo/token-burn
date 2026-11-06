@@ -107,10 +107,13 @@ class LockBusy(Exception):
     """Another live process holds the lock."""
 
 
-def atomic_write_json(path, obj, mode=None):
-    """Write JSON to path + '.tmp<pid>' then os.replace, retrying (Windows locks)."""
+def atomic_write_json(path, obj, mode=0o600):
+    """Write JSON to path + '.tmp<pid>' then os.replace, retrying (Windows locks).
+
+    On macOS and Linux the file gets mode (private 0600 unless the caller passes another) and new parent
+    folders are 0700."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    ensure_dir(path.parent)
     tmp = path.with_name(path.name + ".tmp%d" % os.getpid())
     with open(tmp, "w", encoding="utf-8", newline="\n") as f:
         json.dump(obj, f, separators=(",", ":"))

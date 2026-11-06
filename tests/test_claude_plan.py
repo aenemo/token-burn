@@ -39,7 +39,11 @@ class TestClaudePlan(unittest.TestCase):
         p = mock.patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(self.tmp)})
         p.start()
         self.addCleanup(p.stop)
-        self.usage = json.loads((FIX / "usage_response.json").read_text())
+        # the credentials-file flow (with refresh) is the Windows and Linux one; macOS uses the keychain
+        p = mock.patch.object(claude_plan.sys, "platform", "linux")
+        p.start()
+        self.addCleanup(p.stop)
+        self.usage =json.loads((FIX / "usage_response.json").read_text())
 
     def urlopen(self, *effects):
         """Patch urlopen; each effect is a response object or an exception to raise. Records requests."""

@@ -221,7 +221,8 @@ class TestLocations(Tmp):
             self.assertTrue(fp.is_temp_location(fake / "app"))
             self.assertFalse(fp.is_temp_location(self.tmp / "other"))
             self.assertTrue(fp.is_temp_location(self.tmp / "Temp1_token-burn.zip" / "token-burn"))
-            self.assertTrue(fp.is_temp_location("C:\\Users\\me\\AppData\\Local\\Temp\\Temp2_x.zip\\y"))
+            if os.name == "nt":  # backslashes are not separators on macOS and Linux
+                self.assertTrue(fp.is_temp_location("C:\\Users\\me\\AppData\\Local\\Temp\\Temp2_x.zip\\y"))
 
     def test_real_temp_dir_is_temp(self):
         self.assertTrue(fp.is_temp_location(tempfile.gettempdir()))

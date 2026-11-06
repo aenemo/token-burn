@@ -312,7 +312,9 @@ class TestLinuxIntegration(Isolated):
             sym.assert_called_once_with(str(prog / "token-burn"), str(self.home / ".local" / "bin" / "token-burn"))
             self.assertTrue(any("Desktop entry" in m for m in msgs))
             real_unlink = os.unlink
-            with mock.patch.object(il.os.path, "islink", return_value=True), \
+            # only the command link is a symlink; everything else must still resolve normally
+            link = str(self.home / ".local" / "bin" / "token-burn")
+            with mock.patch.object(il.os.path, "islink", side_effect=lambda p: str(p) == link), \
                     mock.patch.object(il.os, "readlink", return_value=str(prog / "token-burn")), \
                     mock.patch.object(il.os, "unlink", side_effect=lambda p: real_unlink(p) if str(p).endswith(".desktop") else None) as unlink:
                 msgs = il.unregister_os_integration(prog)
@@ -599,7 +601,8 @@ class TestRemoveOnlyOurs(Isolated):
     def test_linux_link_removed_only_when_it_points_into_the_install(self):
         prog = make_app(self.tmp / "share" / "token-burn", marker="token-burn")
         link = self.home / ".local" / "bin" / "token-burn"
-        with mock.patch.object(sys, "platform", "linux"), mock.patch.object(il.os.path, "islink", return_value=True), \
+        with mock.patch.object(sys, "platform", "linux"), \
+                mock.patch.object(il.os.path, "islink", side_effect=lambda p: str(p) == str(link)), \
                 mock.patch.object(il.os.path, "lexists", return_value=True), \
                 mock.patch.object(il.os, "unlink") as unlink:
             with mock.patch.object(il.os, "readlink", return_value=str(self.tmp / "elsewhere" / "token-burn")):

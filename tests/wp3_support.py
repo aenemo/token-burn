@@ -68,8 +68,11 @@ class Isolated(unittest.TestCase):
                "XDG_CONFIG_HOME": str(self.home / ".config")}
         if self.data_env:
             env["TOKEN_BURN_DATA_DIR"] = str(self.data)
-        self.onedrive = self.home / "OneDrive"
-        self.onedrive.mkdir()
+        if sys.platform == "darwin":  # where the macOS OneDrive app keeps its folder
+            self.onedrive = self.home / "Library" / "CloudStorage" / "OneDrive"
+        else:
+            self.onedrive = self.home / "OneDrive"
+        self.onedrive.mkdir(parents=True)
         env["OneDrive"] = str(self.onedrive)
         p = mock.patch.dict(os.environ, env)
         p.start()

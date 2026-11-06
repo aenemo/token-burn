@@ -152,7 +152,8 @@ class ServerTests(unittest.TestCase):
                 os.environ["TOKEN_BURN_DATA_DIR"] = old
 
     def test_reuse_address_off_and_log_rotation(self):
-        self.assertFalse(server.Server.allow_reuse_address)
+        # off on Windows (it would let a second copy bind the port); the normal POSIX default elsewhere
+        self.assertEqual(server.Server.allow_reuse_address, not sys.platform.startswith("win"))
         big = self.data / "server.log"
         big.write_bytes(b"x" * (server.LOG_MAX + 10))
         server.log(self.data, "hello")

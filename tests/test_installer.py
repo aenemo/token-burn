@@ -99,8 +99,11 @@ class TestWizardFlows(InstallerCase):
         self.assertTrue((root / "machines").is_dir() and (root / "control").is_dir())
         self.assertIn("Token Burn", (root / "README.txt").read_text())
         self.collect_now.assert_called_once()
-        self.pin.assert_called_once()
-        self.assertIn("Asking OneDrive to always keep these files on this computer.", con.text)
+        if sys.platform.startswith("win"):  # OneDrive pinning (attrib +P) is Windows only
+            self.pin.assert_called_once()
+            self.assertIn("Asking OneDrive to always keep these files on this computer.", con.text)
+        else:
+            self.pin.assert_not_called()
         self.assertIn("Found these synced folders:", con.text)
         self.assertIn("Shared folder:  %s" % (shared / "token-burn"), con.text)
         self.assertIn("This computer:  Office PC", con.text)
@@ -537,9 +540,10 @@ class TestFrozenInstall(InstallerCase):
         self.assertTrue((self.target / "_internal" / "lib.dll").is_file())
         self.assertTrue(self.src.exists())
         refresh, serve = self.backend.install.call_args[0]
-        self.assertEqual(Path(refresh[0]), self.target / "token-burnw.exe")
+        launcher = "token-burnw.exe" if sys.platform.startswith("win") else "token-burn.exe"  # windowless twin
+        self.assertEqual(Path(refresh[0]), self.target / launcher)
         self.assertEqual(refresh[1:], ["collect"])
-        self.assertEqual(Path(serve[0]), self.target / "token-burnw.exe")
+        self.assertEqual(Path(serve[0]), self.target / launcher)
         settings = (self.home / ".claude" / "settings.json").read_text()
         self.assertIn(str(self.target).replace("\\", "/") + "/token-burn.exe", settings)
         self.assertNotIn(str(self.src).replace("\\", "/"), settings)

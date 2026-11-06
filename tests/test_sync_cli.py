@@ -82,7 +82,9 @@ class TestStatusAndMachines(SyncCase):
     def test_removed_computers_are_hidden(self):
         peers.write_control(str(self.shared), PEER_B, "removed", None, SELF_ID, time.time())
         rc, con = self.sync("machines")
-        self.assertNotIn("Server", con.text)
+        # not just "Server": a runner's own OS name can contain it ("Windows 2025Server")
+        self.assertNotRegex(con.text, r"(?m)^Server\s")
+        self.assertNotIn(PEER_B[:8], con.text)
 
     def test_commands_need_sync_on(self):
         config.save(self.data, {"version": 1, "sync": {"enabled": False}})
