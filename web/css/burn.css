@@ -1,4 +1,4 @@
-/* Header fireball: three data blocks travel right to left toward the title, ignite and burn out behind the "n".
+/* Header fireball: five data blocks travel right to left toward the title, ignite and burn out behind the "n".
  * Compositor-only (translate, scale, opacity), no canvas and no assets. burn.js only pauses it. */
 :root {
   --burn-data: var(--accent);
@@ -35,6 +35,8 @@
 .burn .b1 { --d: 0s;   --y0: -6px; }
 .burn .b2 { --d: 0.5s; --y0: 4px; --blk: 6px; }
 .burn .b3 { --d: 1.1s; --y0: -2px; }
+.burn .b4 { --d: 1.6s; --y0: 6px; --blk: 6px; }
+.burn .b5 { --d: 2.2s; --y0: -4px; }
 .burn-glow { position: absolute; z-index: 0; left: -36px; top: 50%; width: 48px; height: 36px; margin-top: -18px;
   border-radius: 50%; background: radial-gradient(closest-side, var(--burn-glow), transparent); opacity: 0;
   animation: tb-glow var(--burn-period) linear infinite both; }
@@ -54,7 +56,7 @@
   .burn .blk, .burn .blk::before, .burn .blk::after, .burn-glow { animation: none; }
   .burn .blk { opacity: 1; translate: calc(var(--burn-run) * var(--rp) * -1) 0; }
   .burn .blk::before { opacity: 1; } .burn .blk::after { opacity: .7; } .burn-glow { opacity: .45; }
-  .burn .b1 { --rp: .78; } .burn .b2 { --rp: .52; } .burn .b3 { --rp: .26; }
+  .burn .b1 { --rp: .85; } .burn .b2 { --rp: .68; } .burn .b3 { --rp: .51; } .burn .b4 { --rp: .34; } .burn .b5 { --rp: .17; }
 }
 @media (max-width: 520px) { .burn { width: 104px; --burn-run: 108px; --trail: 11px; } .burn .blk { --blk: 6px; } }
 @media (max-width: 340px) { .burn { display: none; } }

@@ -182,7 +182,11 @@ class FrontendContract(unittest.TestCase):
         top = html[html.index('<header class="top">'):html.index("</header>")]
         self.assertLess(top.index('<h1>Token Burn <span class="ver">{{VERSION}}</span></h1>'), top.index('class="burn" aria-hidden="true"'))
         self.assertLess(top.index('class="burn" aria-hidden="true"'), top.index('class="note tagline"'))
-        self.assertEqual(html.count('class="blk '), 3)
+        self.assertEqual(html.count('class="blk '), 5)
+        for i in range(1, 6):  # each fireball has its own delay and a reduced-motion resting place
+            self.assertIn('class="blk b%d"' % i, html)
+            self.assertRegex(read("css/burn.css"), r"\.burn \.b%d \{ --d: " % i)
+            self.assertRegex(read("css/burn.css"), r"\.burn \.b%d \{ --rp: " % i)
         self.assertIn('<h1>Token Burn <span class="ver">{{VERSION}}</span></h1>', html)
         css = read("css/burn.css")
         self.assertRegex(css, r"\.burn\s*\{[^}]*pointer-events:\s*none")
