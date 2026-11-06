@@ -166,7 +166,9 @@ Each platform column (Claude, Cursor and opencode) has its own graph mode switch
 
 History is limited to 30 days. When the window reaches back before the first stored data, the earliest points sum less than a full period, and a note under the chart gives the date and time history starts.
 
-The Claude and opencode columns also have an **Agents** switch beside the graph mode. **All** (default) draws one line per model and effort; **Split** draws two, solid for the primary agent and dashed for subagents, in the same colour, in both graph modes. The Rolling total line stays the total of all usage, and Cursor has no switch because it reports no subagent tokens. The opencode column's summary row also shows Primary agent, Subagents and Cache hits tiles. The Claude column's summary row also shows Primary agent, Subagents and Cache hits tiles for the selected window; Cache hits shows cache read tokens and the hit rate, cache read divided by (input + cache read + cache write), and is hidden when usage.json has no `cache_read` data. The Cursor column's summary row also shows a Cache hits tile, calculated the same way.
+The Claude and opencode columns also have an **Agents** switch beside the graph mode. **All** (default) draws one line per model and effort; **Split** draws two, solid for the primary agent and dashed for subagents, in the same colour, in both graph modes. The Rolling total line stays the total of all usage, and Cursor has no switch because it reports no subagent tokens. The opencode column's summary row also shows Primary agent, Subagents and Cache hit rate tiles. The Claude column's summary row also shows Primary agent, Subagents and Cache hit rate tiles for the selected window; Cache hit rate is cache read divided by (input + cache read + cache write), with the cache read tokens underneath, and is hidden when usage.json has no `cache_read` data. The Cursor column's summary row also shows a Cache hit rate tile, calculated the same way. Every column with token counts also shows an **Input : output** tile: input-side tokens (fresh input plus cache read and write) divided by output tokens, with both counts underneath and the full figures on hover.
+
+Each column has a **Value and limits** card. **Value for money** shows the cost of the last 30 days (or the history there is) at that platform's prices: API list prices for Claude, what Cursor charged for Cursor, and what opencode reported for opencode. Type your monthly plan fee in US$ and it shows how many times the fee that usage would have cost per token, with the fee pro-rated to the same number of days. The fee is kept in this browser only. **Limit forecast** projects each plan pool to 100% from its recent pace (the last hour for the 5-hour pool, the last 24 hours for the others, counting only samples since the last reset) and says whether it will hit the limit before it resets, or what it will be at when it resets. It needs at least 10 minutes of samples.
 
 ## localStorage keys
 
@@ -181,6 +183,7 @@ Per browser, per origin, wrapped in try/catch so a blocked store never breaks th
 | `token-burn.providers` | list of visible providers | Which columns the header toggle buttons show. Uninstalled providers are disabled |
 | `token-burn.span.<platform>` | one of the span keys (`30m` to `30d`) | Rolling total period for that column |
 | `token-burn.machines` | object of `{machineId: false}` | Computers switched off in the header toggle row (sync only). Unknown ids are ignored, and all off is treated as All |
+| `token-burn.fee.<platform>` | a number of US$ | Monthly plan fee typed into that column's Value for money box. Removed when the box is cleared |
 
 A different port is a different origin, so preferences do not carry across ports.
 

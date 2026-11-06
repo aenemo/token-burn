@@ -67,12 +67,12 @@
   }
 
   function totals(rows) {
-    var t = { tokens: 0, cost: 0, requests: 0, models: 0, subTokens: 0, subCost: 0, input: 0, cache: 0, cacheRead: 0, subCacheRead: 0, hasCacheRead: false };
+    var t = { tokens: 0, cost: 0, requests: 0, models: 0, subTokens: 0, subCost: 0, input: 0, output: 0, cache: 0, cacheRead: 0, subCacheRead: 0, hasCacheRead: false };
     var seen = {}, allHave = true;
     rows.forEach(function (r) {
       t.tokens += r.tokens; t.cost += r.cost; t.requests += r.requests;
       t.subTokens += r.subTokens; t.subCost += r.subCost;
-      t.input += r.input; t.cache += r.cache; t.cacheRead += r.cacheRead; t.subCacheRead += r.subCacheRead;
+      t.input += r.input; t.output += r.output || 0; t.cache += r.cache; t.cacheRead += r.cacheRead; t.subCacheRead += r.subCacheRead;
       if (!r.hasCacheRead) allHave = false;
       seen[r.model] = true;
     });
@@ -95,6 +95,61 @@
     var ss = (plat && plat.series) || [];
     for (var i = 0; i < ss.length; i++) if (!Array.isArray(ss[i].cache_read)) return false;
     return true;
+  }
+
+  // Input vs output. Input side = fresh input + cache (read and write): every token the model was sent.
+  // ratio = input side / output, null when there is no output.
+  function ioRatio(tot) {
+    var inp = Math.max(0, (tot && tot.input) || 0), cache = Math.max(0, (tot && tot.cache) || 0);
+    var out = Math.max(0, (tot && tot.output) || 0), side = inp + cache;
+    return { input: inp, cache: cache, inputSide: side, output: out, ratio: out > 0 ? side / out : null };
+  }
+
+  // Value for money: cost at the platform's own prices over the last 30 days (or the history there is),
+  // against a monthly plan fee pro-rated to the same number of days. fee <= 0 or missing gives multiple null.
+  var MONTH_DAYS = 30;
+  function valueStats(plat, nowMs, feeMonthly) {
+    var now = nowMs == null ? Date.now() : nowMs;
+    var fr = frame(plat, '30d', now);
+    var cost = 0;
+    seriesStats(plat, fr).forEach(function (r) { cost += r.cost; });
+    var days = Math.max(0, Math.min(MONTH_DAYS, (now - fr.startMs) / 86400000));
+    var fee = typeof feeMonthly === 'number' && isFinite(feeMonthly) && feeMonthly > 0 ? feeMonthly : null;
+    var feeDays = fee == null ? null : fee * days / MONTH_DAYS;
+    return {
+      cost: cost, days: days, fee: fee, feeForDays: feeDays,
+      multiple: feeDays ? cost / feeDays : null,
+      perMonth: days >= 1 ? cost * MONTH_DAYS / days : null
+    };
+  }
+
+  // Limit forecast for one plan pool from its usage samples ({x: ms, y: pct}, sorted by x).
+  // Rate = change over the recent samples since the last drop (a reset); lookback 1 h for the
+  // 5-hour pool and 24 h for the others. Needs 2+ samples spanning 10+ min.
+  // state: 'at_limit' | 'full' (hits 100% before reset, fullMs) | 'reset_first' (atResetPct) | 'idle' | 'unknown'.
+  var FORECAST_MIN_SPAN = 10 * 60000;
+  function forecastLookback(poolId) { return /five_hour/.test(String(poolId)) ? 3600000 : 86400000; }
+  function forecastPool(points, cur, resetsMs, nowMs, lookbackMs) {
+    var now = nowMs == null ? Date.now() : nowMs;
+    var res = { state: 'unknown', fullMs: null, atResetPct: null, ratePerHour: null };
+    if (typeof cur !== 'number' || !isFinite(cur)) return res;
+    if (cur >= 100) { res.state = 'at_limit'; return res; }
+    var pts = (points || []).filter(function (p) { return typeof p.y === 'number' && p.x <= now && p.x >= now - lookbackMs; });
+    for (var i = pts.length - 1; i > 0; i--) if (pts[i].y < pts[i - 1].y) { pts = pts.slice(i); break; }
+    if (pts.length < 2) return res;
+    var a = pts[0], b = pts[pts.length - 1];
+    if (b.x - a.x < FORECAST_MIN_SPAN) return res;
+    var rate = (b.y - a.y) / (b.x - a.x); // pct per ms
+    res.ratePerHour = rate * 3600000;
+    if (!(rate > 0)) { res.state = 'idle'; return res; }
+    var full = now + (100 - cur) / rate;
+    if (typeof resetsMs === 'number' && isFinite(resetsMs) && resetsMs > now && full >= resetsMs) {
+      res.state = 'reset_first';
+      res.atResetPct = cur + rate * (resetsMs - now);
+      return res;
+    }
+    res.state = 'full'; res.fullMs = full;
+    return res;
   }
 
   // Percent text for a 0..1 fraction that never overstates: 100% only when exactly 1, 0% only when exactly 0.
@@ -229,6 +284,7 @@
       p.end = win.length ? win[win.length - 1].s[p.id] : null;
       p.change = (p.start != null && p.end != null) ? p.end - p.start : null;
       p.points = win.map(function (x) { return { x: x.t, y: x.s[p.id] }; });
+      p.allPoints = all.map(function (x) { return { x: x.t, y: x.s[p.id] }; });
     });
     return { pools: pools, samples: inWin, status: plan.status, last_lookup: plan.last_lookup, next_lookup: plan.next_lookup };
   }
@@ -280,7 +336,8 @@
   TokenBurn.stats = {
     AGENT_SUFFIX: AGENT_SUFFIX, agentSplitRows: agentSplitRows,
     WINDOWS: WINDOWS, DEFAULT_WINDOW: DEFAULT_WINDOW, windowDef: windowDef, frame: frame,
-    seriesStats: seriesStats, totals: totals, cacheHitRate: cacheHitRate, cacheSupported: cacheSupported, pctText: pctText, cumulativeSeries: cumulativeSeries,
+    seriesStats: seriesStats, totals: totals, cacheHitRate: cacheHitRate, ioRatio: ioRatio,
+    valueStats: valueStats, forecastPool: forecastPool, forecastLookback: forecastLookback, cacheSupported: cacheSupported, pctText: pctText, cumulativeSeries: cumulativeSeries,
     runsInWindow: runsInWindow, planStats: planStats,
     SPANS: SPANS, DEFAULT_SPAN: DEFAULT_SPAN, spanDef: spanDef,
     rollingSeries: rollingSeries, rollingTotal: rollingTotal, rollingInfo: rollingInfo

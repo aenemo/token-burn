@@ -10,7 +10,9 @@
     mainAgentName: 'Main session',
     agentSplit: true, // usage graph offers the primary agent vs subagent split
     summaryTiles: true,
-    cacheHitsTile: true, // summary row adds a Cache hits tile (cache read tokens and hit rate)
+    cacheHitsTile: true, // summary row adds a Cache hit rate tile
+    priceBasis: 'the prices opencode reported',
+    valueNote: function (meta) { return meta.cost_reported === false ? 'Some opencode models report no cost, so this total may be understated.' : ''; },
     planUnavailable: true, // opencode has no plan quota, so the plan card shows a message instead of a chart
     // Cool palette: teal, cyan, sky, emerald, slate blue (kept clear of Cursor's indigo and purple).
     palette: [

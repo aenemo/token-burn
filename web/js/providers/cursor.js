@@ -8,7 +8,9 @@
     id: 'cursor',
     name: 'Cursor',
     mainAgentName: 'Main agent',
-    cacheHitsTile: true, // summary row adds a Cache hits tile (cache read tokens and hit rate)
+    cacheHitsTile: true, // summary row adds a Cache hit rate tile
+    priceBasis: 'the prices Cursor charged',
+    valueNote: function () { return 'Cursor cost is what Cursor recorded for each request, which can differ from API list prices.'; },
     // Cool palette: blue, indigo, purple, cyan.
     palette: [
       [79, 70, 229], [37, 99, 235], [124, 58, 237], [14, 165, 233], [99, 102, 241],

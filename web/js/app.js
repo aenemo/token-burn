@@ -8,7 +8,7 @@
 
   var REFRESH_MS = 60000, PLAN_REFRESH_S = 600; // fallbacks; usage.json token_refresh_s / plan_refresh_s override
   var LS_WIN = 'token-burn.window', LS_METRIC = 'token-burn.metric', LS_PROV = 'token-burn.providers';
-  var LS_MACH = 'token-burn.machines';
+  var LS_MACH = 'token-burn.machines', LS_FEE = 'token-burn.fee.';
   var LS_GRAPH = 'token-burn.graph.', LS_SPAN = 'token-burn.span.', LS_AGENTS = 'token-burn.agents.';
   var HAVE_ROLLING = !!(S.SPANS && S.rollingSeries && S.rollingTotal && S.rollingInfo && S.spanDef);
   var DEFAULT_SPAN = HAVE_ROLLING ? S.DEFAULT_SPAN : null;
@@ -82,6 +82,9 @@
       '<section class="card"><h3>Plan usage</h3><div class="plan-banner"></div>' +
         '<div class="chart-box plan-box"><canvas class="plan-canvas" role="img"></canvas></div>' +
         '<div class="plan-table"></div><div class="plan-lookup note"></div></section>' +
+      '<section class="card"><h3>Value and limits</h3>' +
+        '<h4>Value for money</h4><div class="value-fee"></div><div class="value-out"></div>' +
+        '<h4 class="forecast-head">Limit forecast</h4><div class="forecast-out"></div></section>' +
       '<section class="card"><h3>Statistics</h3><div class="stats-table"></div></section>' +
       '<section class="card"><h3>Primary agent</h3><div class="prim-table"></div></section>' +
       '<section class="card"><h3>Subagents</h3><div class="notes sub-notes"></div><div class="sub-table"></div></section>';
@@ -95,6 +98,7 @@
     this.q('.chart-box').appendChild(this.callout);
     this.calloutCtx = null;
     this.buildGraphControls();
+    this.buildFeeInput();
 
     function metric() { return self.metricEff(); }
     function colorOf(k) { return self.color(k); }
@@ -236,6 +240,88 @@
     box.appendChild(picker);
     this.syncGraphControls();
   };
+  // Monthly plan fee (US$), typed by the user and kept in this browser only.
+  Column.prototype.buildFeeInput = function () {
+    var self = this, box = this.q('.value-fee');
+    var id = 'fee-' + this.p.id;
+    var lab = el('label', 'span-label', 'Your monthly plan fee (US$):');
+    lab.setAttribute('for', id);
+    var inp = el('input', 'fee-input');
+    inp.id = id; inp.type = 'number'; inp.min = '0'; inp.step = '1'; inp.inputMode = 'decimal';
+    inp.placeholder = 'e.g. 100';
+    this.fee = null;
+    try {
+      var v = parseFloat(localStorage.getItem(LS_FEE + this.p.id));
+      if (v > 0) { this.fee = v; inp.value = String(v); }
+    } catch (e) { /* storage unavailable */ }
+    inp.addEventListener('input', function () {
+      var n = parseFloat(inp.value);
+      self.fee = n > 0 && isFinite(n) ? n : null;
+      try {
+        if (self.fee) localStorage.setItem(LS_FEE + self.p.id, String(self.fee));
+        else localStorage.removeItem(LS_FEE + self.p.id);
+      } catch (e) { /* ignore */ }
+      if (self.plat) self.renderValue(self.plat);
+    });
+    box.appendChild(lab);
+    box.appendChild(inp);
+  };
+  Column.prototype.renderValue = function (plat) {
+    var P = this.p, out = this.q('.value-out');
+    out.textContent = '';
+    var v = S.valueStats(plat, Date.now(), this.fee);
+    var days = v.days >= 29.95 ? '30 days' : (v.days >= 1 ? Math.floor(v.days) + ' days' : 'less than a day');
+    var line = el('p', 'value-line');
+    line.appendChild(document.createTextNode('Last ' + days + ' at ' + (P.priceBasis || 'API prices') + ': '));
+    line.appendChild(el('strong', null, F.usd(v.cost)));
+    if (v.perMonth != null && v.days < 29.95) line.appendChild(document.createTextNode(' (about ' + F.usd(v.perMonth) + ' a month at this pace)'));
+    line.appendChild(document.createTextNode('.'));
+    out.appendChild(line);
+    var res = el('p', 'value-line');
+    if (v.multiple == null) {
+      res.className = 'note';
+      res.textContent = 'Enter your monthly plan fee to see how the usage compares with paying per token.';
+    } else {
+      var feeTxt = F.usd(v.feeForDays) + ' of plan fee for those days';
+      res.appendChild(el('strong', 'value-mult', (v.multiple >= 10 ? v.multiple.toFixed(0) : v.multiple.toFixed(1)) + 'x'));
+      res.appendChild(document.createTextNode(v.multiple >= 1
+        ? ' your plan fee: paying per token would have cost ' + F.usd(v.cost) + ' against ' + feeTxt + '.'
+        : ' your plan fee: paying per token would have been cheaper (' + F.usd(v.cost) + ' against ' + feeTxt + ').'));
+    }
+    out.appendChild(res);
+    var vn = P.valueNote ? P.valueNote(plat.meta || {}) : '';
+    if (vn) out.appendChild(el('p', 'note', vn));
+  };
+  function durText(ms) {
+    var m = Math.max(0, Math.round(ms / 60000));
+    if (m < 60) return m + ' min';
+    var h = Math.floor(m / 60), d = Math.floor(h / 24);
+    if (d >= 1) return d + ' d ' + (h % 24) + ' h';
+    return h + ' h ' + (m % 60) + ' min';
+  }
+  Column.prototype.renderForecast = function (plan, noPlan) {
+    var out = this.q('.forecast-out'), now = Date.now();
+    out.textContent = '';
+    if (noPlan) { out.appendChild(el('p', 'note', this.p.name + ' has no usage limit, so there is nothing to forecast.')); return; }
+    if (!plan.pools.length) { out.appendChild(el('p', 'note', 'No plan usage data yet.')); return; }
+    var list = el('ul', 'forecast-list');
+    plan.pools.forEach(function (p) {
+      var rMs = Date.parse(p.resets);
+      var f = S.forecastPool(p.allPoints, p.current, isNaN(rMs) ? null : rMs, now, S.forecastLookback(p.id));
+      var li = el('li', 'fc-' + f.state);
+      li.appendChild(el('strong', null, p.label + ': '));
+      var t;
+      if (f.state === 'at_limit') t = 'at the limit now' + (isNaN(rMs) ? '.' : ', resets ' + F.dt(rMs) + '.');
+      else if (f.state === 'full') t = 'hits 100% at ' + F.dt(f.fullMs) + ' (in ' + durText(f.fullMs - now) + ') at the current pace' + (isNaN(rMs) ? '.' : ', before it resets ' + F.dt(rMs) + '.');
+      else if (f.state === 'reset_first') t = 'resets first (' + F.dt(rMs) + '), at about ' + F.pct(Math.min(100, f.atResetPct), 0) + ' by then.';
+      else if (f.state === 'idle') t = 'not rising lately, no limit in sight.';
+      else t = 'not enough recent samples to forecast yet.';
+      li.appendChild(document.createTextNode(t));
+      if (f.ratePerHour != null && f.state !== 'idle') li.title = 'Recent pace: ' + F.signed(f.ratePerHour) + ' percentage points an hour';
+      list.appendChild(li);
+    });
+    out.appendChild(list);
+  };
   Column.prototype.syncGraphControls = function () {
     var self = this;
     if (this.canSplit) Array.prototype.forEach.call(this.q('.agents-btns').children, function (b) {
@@ -344,6 +430,7 @@
       pill.textContent = 'no data'; pill.className = 'pill err'; pill.title = '';
       this.statsTable.update([]); this.primTable.update([]); this.subTable.update([]); this.planTable.update([]);
       this.q('.tiles').textContent = '';
+      this.q('.value-out').textContent = ''; this.q('.forecast-out').textContent = '';
       this.calloutCtx = null; this.updateCallout();
       return;
     }
@@ -373,11 +460,16 @@
       var hit = S.cacheHitRate(tot);
       if (S.cacheSupported(plat)) {
         var cr = tot.hasCacheRead ? clamp0(tot.cacheRead) : 0;
-        var sub = hit != null ? S.pctText(Math.min(1, clamp0(hit))) + ' of input-side tokens'
-          : (tot.tokens > 0 ? null : 'no usage in window');
-        tiles.appendChild(tile('Cache hits', F.tokens(cr), sub, F.full(cr) + ' cache read tokens'));
+        var val = hit != null ? S.pctText(Math.min(1, clamp0(hit))) : 'n/a';
+        var sub = tot.tokens > 0 ? F.tokens(cr) + ' cache reads' : 'no usage in window';
+        tiles.appendChild(tile('Cache hit rate', val, sub, F.full(cr) + ' cache read tokens, as a share of input-side tokens (input + cache read + cache write)'));
       }
     };
+    var io = S.ioRatio(tot);
+    var ioTile = tile('Input : output',
+      io.ratio == null ? 'n/a' : (io.ratio >= 100 ? io.ratio.toFixed(0) : io.ratio.toFixed(1)) + ' : 1',
+      'in ' + F.tokens(io.inputSide) + ', out ' + F.tokens(io.output),
+      'Input side ' + F.full(io.inputSide) + ' tokens (fresh input ' + F.full(io.input) + ', cache ' + F.full(io.cache) + '), output ' + F.full(io.output) + ' tokens');
     if (P.summaryTiles) {
       var clamp0 = function (x) { return Math.abs(x) < 1e-9 ? 0 : Math.max(0, x); };
       var subShare = function (n, d) { return d > 0 ? S.pctText(Math.min(1, clamp0(n) / d)) + ' of ' + (metric === 'cost' ? 'cost' : 'tokens') : null; };
@@ -389,6 +481,7 @@
         F.full(tot.subTokens) + ' tokens, ' + F.usd(tot.subCost)));
     }
     if (P.cacheHitsTile) cacheTile();
+    if (P.tokensAvailable(meta)) tiles.appendChild(ioTile);
     tiles.appendChild(tile('Requests', F.full(tot.requests)));
     tiles.appendChild(tile('Models', String(tot.models)));
     plan.pools.forEach(function (p) {
@@ -478,6 +571,8 @@
     }
     if (this.planChart && !noPlan) C.updatePlan(this.planChart, plan, fr, function (i) { return self.planColor(i); }, this.root, markers);
     this.planTable.update(plan.pools.map(function (p, i) { p.index = i; return p; }));
+    this.renderValue(plat);
+    this.renderForecast(plan, noPlan);
     this.q('.plan-lookup').textContent = 'Last lookup: ' + (plan.last_lookup ? F.dtIsoS(plan.last_lookup) : 'n/a') +
       '. Next lookup: ' + (plan.next_lookup ? F.dtIsoS(plan.next_lookup) : 'n/a') + '.';
 

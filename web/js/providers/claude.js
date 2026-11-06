@@ -12,7 +12,8 @@
     mainAgentName: 'Main session',
     agentSplit: true, // usage graph offers the primary agent vs subagent split
     summaryTiles: true,
-    cacheHitsTile: true, // summary row adds a Cache hits tile (cache read tokens and hit rate) // summary row adds Primary agent, Subagents and Cache hits tiles
+    cacheHitsTile: true, // summary row adds a Cache hit rate tile
+    priceBasis: 'API prices', // value for money: what the cost figures are priced at
     // Warm palette: orange, amber, gold, red, brown.
     palette: [
       [234, 88, 12], [217, 119, 6], [202, 138, 4], [220, 38, 38], [180, 83, 9],

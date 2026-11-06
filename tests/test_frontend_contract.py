@@ -134,7 +134,8 @@ class FrontendContract(unittest.TestCase):
         self.assertNotIn("summaryTiles", read("js/providers/cursor.js"))
         self.assertRegex(read("js/providers/claude.js"), r"cacheHitsTile:\s*true")
         self.assertRegex(read("js/providers/cursor.js"), r"cacheHitsTile:\s*true")
-        for label in ("'Primary agent'", "'Subagents'", "'Cache hits'", "input-side tokens"):
+        for label in ("'Primary agent'", "'Subagents'", "'Cache hit rate'", "input-side tokens", "'Input : output'",
+                      "Value and limits", "Limit forecast", "token-burn.fee."):
             self.assertIn(label, app)
 
     def test_vendored_chart_exists(self):
@@ -165,14 +166,14 @@ class FrontendContract(unittest.TestCase):
         css = read("css/app.css")
         self.assertIn("@supports (grid-template-rows: subgrid)", css)
         self.assertIn("grid-template-rows: subgrid", css)
-        self.assertIn("grid-row: span 7", css)
+        self.assertIn("grid-row: span 8", css)
         self.assertIn("@media (min-width: 1101px)", css)
         self.assertIn("@media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }", css)
         html = read("index.html")
         self.assertLess(html.index('id="col-claude"'), html.index('id="col-cursor"'))
         js = read("js/app.js")
         self.assertEqual(js.count("<div class=\"plat-head\">"), 1)
-        self.assertEqual(js.count("'<section class=\"card\">"), 5)
+        self.assertEqual(js.count("'<section class=\"card\">"), 6)
 
     def test_burn_header_animation(self):
         html = read("index.html")

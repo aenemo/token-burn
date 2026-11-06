@@ -91,14 +91,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .cols[hidden], .cols > section[hidden] { display: none; }
 @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
 
-/* Align corresponding blocks (head, tiles, 5 cards) of the columns: each visible
-   column section spans the same 7 row tracks via subgrid, so any visible subset
+/* Align corresponding blocks (head, tiles, 6 cards) of the columns: each visible
+   column section spans the same 8 row tracks via subgrid, so any visible subset
    lines up. The stacked layout keeps the plain flow. */
 @supports (grid-template-rows: subgrid) {
   @media (min-width: 1101px) {
     .cols { column-gap: 16px; row-gap: 0; align-items: stretch; }
     .cols > section:not([hidden]) {
-      display: grid; grid-template-rows: subgrid; grid-row: span 7; row-gap: 0; align-items: stretch;
+      display: grid; grid-template-rows: subgrid; grid-row: span 8; row-gap: 0; align-items: stretch;
     }
     .cols > section .tiles { align-content: start; }
   }
@@ -127,6 +127,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
   padding: 12px 14px; margin-top: 12px; min-width: 0;
 }
 .col .card > h3 { border-left: 3px solid var(--col); padding-left: 8px; }
+.card h4 { font-size: 13px; margin: 10px 0 6px; color: var(--muted); font-weight: 600; }
+.card h4:first-of-type { margin-top: 6px; }
+.value-fee { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.fee-input { width: 8em; padding: 4px 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--card); color: inherit; font: inherit; }
+.value-line { margin: 6px 0; }
+.value-mult { font-size: 18px; color: var(--col); }
+.forecast-list { margin: 4px 0; padding-left: 18px; }
+.forecast-list li { margin: 3px 0; }
+.forecast-list li.fc-full strong, .forecast-list li.fc-at_limit strong { color: var(--err-fg); }
 .chart-box { position: relative; height: 320px; min-width: 0; }
 .plan-box { height: 260px; }
 

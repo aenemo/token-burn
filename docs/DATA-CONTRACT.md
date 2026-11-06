@@ -466,4 +466,5 @@ Before writing, the existing own file's header is read. If its `write_token` dif
   - `loIdx = endIdx - W + 1`
 - **Charts:** cumulative lines per series inside the window, with Chart.js LTTB decimation at 500 samples.
 - **Refresh:** the page fetches `/api/usage.json` every 60 s with `cache: 'no-store'` and shows a "Next refresh in" countdown.
-- **localStorage:** the window and metric are remembered in `token-burn.window` and `token-burn.metric`, the visible providers in `token-burn.providers`, and the computers switched off in `token-burn.machines` (an object `{machineId: false}`), accessed inside try/catch.
+- **localStorage:** the window and metric are remembered in `token-burn.window` and `token-burn.metric`, the visible providers in `token-burn.providers`, the computers switched off in `token-burn.machines` (an object `{machineId: false}`), and each column's monthly plan fee in US$ in `token-burn.fee.<platform>`, accessed inside try/catch.
+- **Derived stats (no new keys):** the Input : output tile, the value for money figures and the limit forecast are all computed in `stats.js` from keys already listed here (`input`, `output`, `cache`, `cost` and `plan.samples`, `pools[].now`, `pools[].resets`).
