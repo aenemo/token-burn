@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import shutil
@@ -84,6 +85,17 @@ class TestParsing(unittest.TestCase):
         self.assertEqual(cursor.event_model_name({"model": "Auto", "tokenUsage": {"model": "gpt-5"}}), "gpt-5")
         self.assertEqual(cursor.event_model_name({"someModelField": "x-model"}), "x-model")
         self.assertIsNone(cursor.event_model_name({"model": " Unknown Model "}))
+
+    def test_cookie_carries_user_id_from_session_token(self):
+        def b64(obj):
+            return base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")
+        jwt = b64({"alg": "HS256"}) + "." + b64({"sub": "auth0|user_01ABC", "type": "session"}) + ".sig"
+        cookie = cursor.cookie_headers(jwt)["Cookie"]
+        self.assertEqual(cookie, "WorkosCursorSessionToken=user_01ABC%3A%3A" + jwt)
+
+    def test_cookie_falls_back_to_plain_token(self):
+        self.assertEqual(cursor.cookie_headers("TESTTOKEN")["Cookie"], "WorkosCursorSessionToken=TESTTOKEN")
+        self.assertEqual(cursor.cookie_headers("a.%%%.c")["Cookie"], "WorkosCursorSessionToken=a.%%%.c")
 
     def test_event_list_key_fallbacks(self):
         self.assertEqual(cursor.event_list({"usageEvents": [1]}), ([1], None))
@@ -175,7 +187,7 @@ class TestCollect(AdapterBase):
         again = FakePost({U1: [ok(load("events_page1.json"))]})
         res = self.run_collect(again, now=NOW + 60)
         payload = again.calls[0][2]
-        self.assertEqual(int(payload["startDate"]), int(last) - 2 * 3600 * 1000)
+        self.assertEqual(int(payload["startDate"]), int(last) - 24 * 3600 * 1000)
         self.assertEqual(int(payload["endDate"]), int((NOW + 60) * 1000))
         self.assertEqual(sum(r["input"] for r in self.rows()), before)
         self.assertEqual(res["meta"]["event_count"], 5)  # cumulative, nothing new
@@ -188,6 +200,23 @@ class TestCollect(AdapterBase):
         self.assertEqual(res["meta"]["event_count"], 6)
         self.assertEqual(sum(r["input"] for r in self.rows()), before + 9)
         self.assertEqual(self.store.kv_get("cursor:last_ts"), 1792000300000)
+
+    def test_late_event_three_hours_old_is_still_collected(self):
+        # Cursor can publish events an hour or more late. An event older than the
+        # newest one already stored must still fall inside the next request window.
+        newest = 1792000240000
+        self.store.kv_set("cursor:last_ts", newest)
+        late_ms = newest - 3 * 3600 * 1000
+
+        def windowed(url, headers, payload):
+            inside = int(payload["startDate"]) <= late_ms <= int(payload["endDate"])
+            events = [{"timestamp": str(late_ms), "model": "m-high", "conversationId": "late",
+                       "tokenUsage": {"inputTokens": 7}}] if inside else []
+            return ok({"totalUsageEventsCount": len(events), "usageEventsDisplay": events})
+
+        self.run_collect(windowed)
+        self.assertEqual(sum(r["input"] for r in self.rows()), 7)
+        self.assertEqual(self.store.kv_get("cursor:last_ts"), newest)
 
     def test_backfill_uses_full_window_even_with_last_ts(self):
         self.store.kv_set("cursor:last_ts", 1792000000000)

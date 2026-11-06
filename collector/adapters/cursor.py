@@ -5,6 +5,7 @@ separate (input, output, cache read, cache write). The sign-in token is read
 from Cursor's own state.vscdb (read-only) and is never logged or written.
 """
 
+import base64
 import json
 import sqlite3
 import urllib.error
@@ -20,7 +21,9 @@ from collector.util import CURSOR_HOOK_LOG, cursor_state_db
 PLATFORM = "cursor"
 PAGE_SIZE = 100
 MAX_PAGES = 100
-OVERLAP_MS = 2 * 3600 * 1000
+# Cursor can publish usage events an hour or more after they happen, so each
+# incremental fetch looks back a full day; the seen table drops the repeats.
+OVERLAP_MS = 24 * 3600 * 1000
 WINDOW_S = 30 * 86400
 LAST_TS_KEY = "cursor:last_ts"
 META_KEY = "cursor:meta"
@@ -86,12 +89,28 @@ def read_token(db_path=None):
         con.close()
 
 
+def _token_user_id(token):
+    """User id from the session token's 'sub' claim ("auth0|user_X" -> "user_X"), or None."""
+    try:
+        part = token.split(".")[1]
+        part += "=" * (-len(part) % 4)
+        sub = json.loads(base64.urlsafe_b64decode(part)).get("sub")
+    except (IndexError, ValueError, AttributeError, TypeError):
+        return None
+    if not isinstance(sub, str) or not sub:
+        return None
+    return sub.split("|")[-1] or None
+
+
 def cookie_headers(token):
+    # cursor.com expects "<user id>::<token>" (URL-encoded) in this cookie.
+    user_id = _token_user_id(token)
+    value = (user_id + "%3A%3A" + token) if user_id else token
     return {
         "Content-Type": "application/json",
         "Accept": "application/json",
         "Origin": "https://cursor.com",
-        "Cookie": "WorkosCursorSessionToken=" + token,
+        "Cookie": "WorkosCursorSessionToken=" + value,
     }
 
 
