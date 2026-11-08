@@ -143,6 +143,8 @@ subagent_runs(platform TEXT, agent_id TEXT, agent_type TEXT, agent_name TEXT, se
 plan_samples(platform TEXT, t REAL, pools TEXT /* JSON {pool_id: {"pct": float, "resets_at": str|null}} */,
              PRIMARY KEY(platform, t))
 seen(platform TEXT, key TEXT, minute INT, val INT DEFAULT 0, PRIMARY KEY(platform, key))   -- val: output tokens already counted (Claude)
+session_meta(platform TEXT, session_id TEXT, title TEXT, source TEXT, updated REAL,
+             PRIMARY KEY(platform, session_id))      -- session titles; source is ai, chat, app or custom
 kv(key TEXT PRIMARY KEY, value TEXT /* JSON */)
 ```
 
@@ -166,10 +168,28 @@ class Store:
     def session_costs(self, platform) -> dict[(session_id, model), float]
     def subagent_runs(self, platform, since_t) -> list[sqlite3.Row]
     def plan_samples(self, platform, since_t) -> list[tuple[float, dict]]
+    def upsert_session_title(self, platform, session_id, title, source, t=0.0) -> bool
+        # title cleaned by clean_title() (control characters removed, whitespace collapsed, 120 characters);
+        # a custom title is never replaced by ai, chat or app; an equal source replaces; True when it changed
+    def session_ids(self, platform) -> list[str]       # distinct non-empty session ids in usage_minute
+    def session_titles(self, platform) -> dict[session_id, title]
     def prune(self, cutoff_minute) -> None
         # deletes usage_minute and seen rows older than the cutoff, plan_samples and subagent_runs older than 30 days,
-        # and session_tokens/session_cost for sessions with no usage rows left
+        # and session_tokens/session_cost/session_meta for sessions with no usage rows left
 ```
+
+### Session titles
+
+Titles come only from these sources, never from prompt text (Claude `last-prompt` entries are never read):
+
+| Platform | Source | Rank |
+|---|---|---|
+| Claude | `ai-title` entries (`aiTitle`), the latest wins | `ai` |
+| Claude | `custom-title` entries (`customTitle`, set with `/rename`), the latest wins | `custom` |
+| opencode | `session_v2.title` of top-level sessions | `app` |
+| Cursor | `name` (else `subtitle`) of `composerData:<conversation id>` in this computer's `state.vscdb`, read-only; each untitled conversation is looked up at most once a day (kv `cursor:title_checked`) | `chat` |
+
+Claude transcripts already read by an older version are scanned once for title lines only (kv `claude:titles_v1`). Subagent transcripts are skipped.
 
 ## Plan lookup throttle (`collector/plan/__init__.py`)
 
@@ -279,6 +299,11 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
          "sub_input": [0, 10], "sub_output": [0, 50], "sub_cache": [0, 2000], "sub_cost": [0.0, 0.0012],
          "cache_read": [300000, 100000], "sub_cache_read": [0, 1800]}
       ],
+      "sessions": [
+        {"id": "3c9d...", "title": "Fix the login page",
+         "series": [{"key": "claude-opus-5-5-medium", "model": "claude-opus-5-5", "effort": "medium",
+                     "t": [15675], "input": [120], "output": [900], "cache": [337285], "cost": [0.764384]}]}
+      ],
       "subagent_runs": [
         {"agent_id": "a1b2c3d4", "agent_name": "explore · a1b2c3d", "agent_type": "explore", "session_id": "...",
          "model": "claude-sonnet-5", "effort": "medium", "t": "2026-10-21T03:40:00Z", "status": "completed",
@@ -310,6 +335,10 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
 - `cache` = cache_read + cache_write. Tokens = input + output + cache.
 - `cache_read` and `sub_cache_read` are extra per-minute arrays (same `t` indexing and length as `cache`/`sub_cache`). `cache_read` is a subset of `cache` (cache READ tokens only); `sub_cache_read` is the subagent part. Older frontends ignore them. Cache hit rate = cache_read / (input + cache_read + cache_write), computed client-side.
 - Series are sorted by total tokens, highest first.
+
+### Sessions
+- One entry per session with usage in the 30-day history, sorted by total tokens, highest first. `title` is `null` when no title is known; the page then shows "Session " plus the first 8 characters of the id (Cursor: "Conversation " plus 6, or "Cursor agent " plus 6 for `agent-` ids).
+- `series` is grouped by model key like the top-level series, with the same `t` indexing and allocated cost, and includes subagent usage in that session (opencode child sessions count under their parent). Summed over all sessions it equals the top-level series.
 
 ### Subagent runs
 - `input`, `output`, `cache` and `cost` are recomputed from `usage_minute` rows with that agent_id. They fall back to the hook token counts when there are no rows.
@@ -356,10 +385,11 @@ Present whenever 2 or more computers are in the `machines` list, with an entry f
 
 ```json
 "machines": {"<machine id>": {"series": [ ... same shape as platforms.<p>.series, t relative to start ... ],
+                              "sessions": [ ... same shape as platforms.<p>.sessions ... ],
                               "subagent_runs": [ ... ]}}
 ```
 
-The platform's own `series` and `subagent_runs` are the merged totals. `meta.machines` holds the number of computers. Cursor has no `machines` breakdown because its data is account-wide. The frontend (`web/js/machines.js`) rebuilds the Claude and opencode series from `machines` when only some computers are selected.
+The platform's own `series`, `sessions` and `subagent_runs` are the merged totals. Merged sessions from other computers carry their hashed id; this computer's own sessions keep their real id. `meta.machines` holds the number of computers. Cursor has no `machines` breakdown because its data is account-wide. The frontend (`web/js/machines.js`) rebuilds the Claude and opencode series from `machines` when only some computers are selected.
 
 ### Merge rules (`collector/sync/merge.py`)
 
@@ -369,6 +399,7 @@ Minutes are merged as absolute epoch minutes (a peer's `start` may differ); at t
 |---|---|
 | Claude, opencode | Cells are summed across this computer and every included peer (retired still counts, removed does not), except that machine ids sharing a `host_fp` (one physical computer that lost its id, was reset or reinstalled, plus this computer's own older ids and `adopted-<id>.json.gz` history) read the same logs, so they are combined per cell by MAX first and then summed with other computers. The newest written member represents the group; older ones are `superseded_by` it. Peers without `host_fp` (older versions) are summed as before. Subagent runs are concatenated, de-duplicated on `agent_id`, sorted newest first and limited to the window. Local `meta` is kept; if this computer does not have the client installed, `subagent_tokens_attributed` is true when any peer run has tokens. opencode `cost_reported` is false if any computer has tokens with cost 0. `status` is the local status, or `"ok (from other computers)"` when not installed locally |
 | Cursor | Per (series key, minute) the cell with the largest token total (input + output + cache) wins; ties go to larger cost, then larger requests. The winning cell supplies input, output, cache, cache_read, cost and requests. Each `sub_x` is `min(winning total of x, max of sub_x over all cells)`. Runs are the union by `agent_id`, preferring a record with non-null tokens, else the newest. The same conversation seen on two computers can appear twice: Cursor agent ids are hashed per computer (`sha256(machine_id:id)`, for privacy), so run de-duplication across computers cannot match and the union can list a run once per computer. Cell totals are unaffected (largest wins) |
+| Sessions | Keyed by the hashed session id (below). Within one physical computer (same `host_fp`) the same id is combined per cell by MAX; different computers are unioned. Cursor ids are salted account-wide, so one conversation seen on several computers is one session, combined by MAX. The first title wins and a later one fills a missing title |
 | Plans (Claude, Cursor) | Samples are the union of local samples (last 30 days) and peer samples, de-duplicated on `round(t)`; current pools come from the newest sample from any computer, reset times are the union, `last_lookup` is the newest across computers, `next_lookup` and `status` are local. Computers on different accounts would interleave (not supported) |
 
 ### Shared folder layout
@@ -395,6 +426,9 @@ Minutes are merged as absolute epoch minutes (a peer's `start` may differ); at t
      "m": [29631234, 29631240], "input": [120, 80], "output": [900, 400], "cache": [337285, 110740],
      "cache_read": [300000, 100000], "cost": [0.764384, 0.057803], "requests": [3, 1],
      "sub_input": [0, 10], "sub_output": [0, 50], "sub_cache": [0, 2000], "sub_cache_read": [0, 1800], "sub_cost": [0.0, 0.0012]}],
+   "sessions": [{"id": "5e0b7a9c21d4f368", "title": "Fix the login page",
+     "series": [{"key": "claude-opus-5-5-medium", "model": "claude-opus-5-5", "effort": "medium",
+       "m": [29631234], "input": [120], "output": [900], "cache": [337285], "cost": [0.764384]}]}],
    "subagent_runs": [{"agent_id": "b81f0c2e9a7d4c11", "agent_name": "explore \· b81f0c2", "agent_type": "explore",
      "model": "claude-sonnet-5", "effort": "medium", "t": "2026-11-05T02:40:00Z", "status": "completed",
      "input": 1200, "output": 3400, "cache": 250000, "cost": 0.41, "cost_estimated": false}],
@@ -405,7 +439,7 @@ Minutes are merged as absolute epoch minutes (a peer's `start` may differ); at t
 ```
 
 - `m` is absolute epoch minutes. Series are built from this computer's own payloads before merging, so merged data is never re-exported.
-- Never written: `session_id`, `meta`, file counts, paths, prompts, titles, credentials. `agent_id` is `sha256(machine_id + ":" + original_id).hexdigest()[:16]` and `agent_name` is rebuilt as `<type or "subagent"> \· <hashed id[:7]>`. `status` is trimmed to 120 characters with control characters removed.
+- Never written: raw session ids, `meta`, file counts, paths, prompts, credentials. Session ids are `sha256("session:" + salt + ":" + id).hexdigest()[:16]`, where the salt is `host_fp` (else the machine id) for Claude and opencode and `cursor` for Cursor. Titles are only those listed under Session titles, capped at 120 characters with control characters removed. `agent_id` is `sha256(machine_id + ":" + original_id).hexdigest()[:16]` and `agent_name` is rebuilt as `<type or "subagent"> \· <hashed id[:7]>`. `status` is trimmed to 120 characters with control characters removed.
 - Plan samples are raw `(t, pools)`, thinned to one per 5 minutes after 2 days; per pool only a finite `pct` and a `resets_at` string of at most 40 characters are kept.
 - `host_fp` (optional, 16 lowercase hex; ignored when invalid) identifies the physical computer: the first 16 hex of SHA-256 of `token-burn-host-fp-v1:` plus the OS machine id (Windows `MachineGuid` read-only from the registry, macOS `IOPlatformUUID` from `ioreg`, Linux `/etc/machine-id` or `/var/lib/dbus/machine-id`), or of the host name and OS when none is readable. The raw id is never exported. Older files have none.
 - A computer adopted after a reinstall merges `data_dir/adopted-<id>.json.gz` into its export by per-cell maximum; the file is deleted once all its minutes are older than 30 days.
@@ -429,6 +463,7 @@ Minutes are merged as absolute epoch minutes (a peer's `start` may differ); at t
 | Machine files read per pass | 64 (newest first; beyond that "too many computers") |
 | Series per platform | 300; each array at most 50,000 entries, all equal length |
 | Subagent runs per platform | 5,000 |
+| Sessions per platform | 3,000; at most 40 series each; id must be 16 lowercase hex (bad or repeated ids are dropped); title at most 120 characters or `null` |
 | Plan samples | 20,000; at most 20 pools each; `pct` finite 0 to 1000 |
 | Values | tokens integer 0 to 1e12, cost finite 0 to 1e6, requests 0 to 1e7; each `sub_*` clamped to its total |
 | Strings | name 40, hostname 64, os 40, version 20, model, key and effort 120, status 120; control characters removed |

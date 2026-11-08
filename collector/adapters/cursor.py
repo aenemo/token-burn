@@ -27,6 +27,8 @@ OVERLAP_MS = 24 * 3600 * 1000
 WINDOW_S = 30 * 86400
 LAST_TS_KEY = "cursor:last_ts"
 META_KEY = "cursor:meta"
+TITLE_CHECK_KEY = "cursor:title_checked"
+TITLE_RECHECK_S = 86400
 AUTO_COST = "Auto Cost"
 
 EVENT_URLS = (
@@ -87,6 +89,70 @@ def read_token(db_path=None):
         return None
     finally:
         con.close()
+
+
+def chat_names(ids, db_path=None):
+    """{conversation id: chat name} from Cursor's local composerData entries (read-only).
+
+    Uses the chat's name, or its subtitle when the name is empty. Conversations from other
+    computers, background agents or deleted chats are simply missing. Never raises.
+    """
+    out = {}
+    ids = [i for i in ids if isinstance(i, str) and i]
+    if not ids:
+        return out
+    try:
+        path = Path(db_path) if db_path else Path(cursor_state_db())
+        if not path.is_file():
+            return out
+        con = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+    except (sqlite3.Error, OSError, ValueError):
+        return out
+    try:
+        for cid in ids:
+            try:
+                row = con.execute("SELECT value FROM cursorDiskKV WHERE key = ?",
+                                  ("composerData:" + cid,)).fetchone()
+            except sqlite3.Error:
+                break
+            if not row or not row[0]:
+                continue
+            try:
+                value = row[0]
+                if isinstance(value, bytes):
+                    value = value.decode("utf-8", errors="replace")
+                data = json.loads(value)
+            except (ValueError, TypeError):
+                continue
+            if not isinstance(data, dict):
+                continue
+            for field in ("name", "subtitle"):
+                v = data.get(field)
+                if isinstance(v, str) and v.strip():
+                    out[cid] = v
+                    break
+    finally:
+        con.close()
+    return out
+
+
+def refresh_titles(store, now_s, db_path=None):
+    """Look up chat names for stored conversations without a title, each at most once a day."""
+    checked = store.kv_get(TITLE_CHECK_KEY) or {}
+    if not isinstance(checked, dict):
+        checked = {}
+    have = store.session_titles(PLATFORM)
+    stored = set(store.session_ids(PLATFORM))
+    due = [i for i in stored if i not in have
+           and now_s - float(checked.get(i) or 0) >= TITLE_RECHECK_S]
+    if due:
+        for cid, name in chat_names(due, db_path).items():
+            store.upsert_session_title(PLATFORM, cid, name, "chat", now_s)
+        for cid in due:
+            checked[cid] = now_s
+    checked = {k: v for k, v in checked.items() if k in stored}
+    store.kv_set(TITLE_CHECK_KEY, checked)
+    return len(due)
 
 
 def _token_user_id(token):
@@ -485,6 +551,12 @@ def _collect(store, now, log, backfill):
 
     for run in subagent_runs(hook_records, now_s):
         store.upsert_subagent_run(run)
+
+    try:
+        refresh_titles(store, now_s)
+    except Exception as exc:  # titles are optional, never fail the collection
+        if log:
+            log.warning("cursor chat names: %s", type(exc).__name__)
 
     if newest:
         store.kv_set(LAST_TS_KEY, newest)

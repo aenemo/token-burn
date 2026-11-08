@@ -4,6 +4,7 @@ Nothing here evaluates, imports or executes anything from the files: they are de
 size limit, parsed as JSON, and every field is type checked, clamped and copied into a fresh dict.
 """
 import gzip
+import hashlib
 import io
 import json
 import math
@@ -29,6 +30,11 @@ _COST_FIELDS = ("cost", "sub_cost")
 MAX_POINTS = 50000
 MAX_SERIES = 300
 MAX_RUNS = 5000
+MAX_SESSIONS = 3000
+MAX_SESSION_SERIES = 40     # model keys within one session
+TITLE_MAX = 120
+SESSION_FIELDS = ("input", "output", "cache", "cost")
+SESSION_ID_RE = re.compile(r"[0-9a-f]{16}")
 MAX_SAMPLES = 20000
 MAX_POOLS = 20
 MAX_TOKENS = 10 ** 12
@@ -54,6 +60,17 @@ def strip_control(s, cap):
     """Remove control characters and trim to cap characters."""
     s = "".join(ch for ch in s if unicodedata.category(ch)[0] != "C")
     return s.strip()[:cap]
+
+
+def session_salt(platform, host_fp, machine_id):
+    """Salt for hashed session ids. Cursor is account-wide, so one conversation must get the same id
+    on every computer; Claude and opencode sessions belong to one physical computer."""
+    return "cursor" if platform == "cursor" else (host_fp or machine_id or "")
+
+
+def session_hash(salt, session_id):
+    """Stable 16 hex id that cannot be reversed to the original session id."""
+    return hashlib.sha256(("session:%s:%s" % (salt, session_id)).encode("utf-8")).hexdigest()[:16]
 
 
 # ---- reading
@@ -207,6 +224,79 @@ def _clean_series(raw, lo_min, hi_min):
     return out
 
 
+def _clean_session_series(raw, lo_min, hi_min):
+    """One series inside a session (input, output, cache, cost per minute), or None when malformed."""
+    if not isinstance(raw, dict):
+        return None
+    model = _str(raw.get("model"), 120)
+    effort = _str(raw.get("effort"), 120)
+    key = _str(raw.get("key"), 120) or (("%s-%s" % (model, effort)) if effort else model)
+    m = raw.get("m")
+    if not model or not isinstance(m, list) or len(m) > MAX_POINTS:
+        return None
+    n = len(m)
+    cols = {}
+    for f in SESSION_FIELDS:
+        v = raw.get(f)
+        if not isinstance(v, list) or len(v) != n:
+            return None
+        cols[f] = v
+    out = {"key": key, "model": model, "effort": effort, "m": []}
+    for f in SESSION_FIELDS:
+        out[f] = []
+    last = None
+    for i, mv in enumerate(m):
+        mv = as_int(mv)
+        if mv is None or (last is not None and mv <= last):
+            return None
+        last = mv
+        vals = []
+        for f in SESSION_FIELDS:
+            if f == "cost":
+                v = as_float(cols[f][i])
+                if v is None:
+                    return None
+                vals.append(round(max(0.0, min(v, MAX_COST)), 6))
+            else:
+                v = as_int(cols[f][i])
+                if v is None:
+                    return None
+                vals.append(_clamp(v, MAX_TOKENS))
+        if lo_min <= mv <= hi_min:
+            out["m"].append(mv)
+            for f, v in zip(SESSION_FIELDS, vals):
+                out[f].append(v)
+    return out
+
+
+def _clean_sessions(raw, lo_min, hi_min):
+    """Sessions with a hashed id, an optional capped title and per-model series. Malformed ones are dropped."""
+    out = []
+    if not isinstance(raw, list):
+        return out
+    seen = set()
+    for r in raw[:MAX_SESSIONS]:
+        if not isinstance(r, dict):
+            continue
+        sid = r.get("id")
+        if not isinstance(sid, str) or not SESSION_ID_RE.fullmatch(sid) or sid in seen:
+            continue
+        series = r.get("series")
+        if not isinstance(series, list):
+            continue
+        clean = []
+        for s in series[:MAX_SESSION_SERIES]:
+            cs = _clean_session_series(s, lo_min, hi_min)
+            if cs is not None and cs["m"]:
+                clean.append(cs)
+        if not clean:
+            continue
+        seen.add(sid)
+        title = _str(r.get("title"), TITLE_MAX) if isinstance(r.get("title"), str) else ""
+        out.append({"id": sid, "title": " ".join(title.split()) or None, "series": clean})
+    return out
+
+
 def _clean_runs(raw):
     out = []
     if not isinstance(raw, list):
@@ -268,7 +358,8 @@ def clean_platform(raw, lo_min, hi_min):
     """Whitelisted copy of one platform block."""
     out = {"installed": raw.get("installed") is not False,
            "status": _str(raw.get("status"), 120, "ok"),
-           "series": [], "subagent_runs": _clean_runs(raw.get("subagent_runs")),
+           "series": [], "sessions": _clean_sessions(raw.get("sessions"), lo_min, hi_min),
+           "subagent_runs": _clean_runs(raw.get("subagent_runs")),
            "plan": _clean_plan(raw.get("plan"))}
     series = raw.get("series")
     if isinstance(series, list):

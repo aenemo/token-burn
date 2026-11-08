@@ -126,6 +126,50 @@ def reset_times(samples):
     return {k: [iso(t) for t in sorted(v)] for k, v in out.items()}
 
 
+def build_sessions(store, platform, start_min, allocated):
+    """[{id, title, series: [{key, model, effort, t, input, output, cache, cost}]}], most tokens first.
+
+    The same rows and allocated costs as the model series, grouped by session. A subagent whose usage
+    is stored under its own session id (opencode child sessions) is folded into its parent session.
+    """
+    parent_of = {}
+    for r in store.subagent_runs(platform, start_min * 60):
+        if r["session_id"] and r["session_id"] != r["agent_id"]:
+            parent_of[r["agent_id"]] = r["session_id"]
+    titles = store.session_titles(platform)
+    by_sess = {}
+    for r, cost, _ in allocated:
+        sid = r["session_id"] or ""
+        if r["agent_kind"] == "subagent" and sid in parent_of:
+            sid = parent_of[sid]
+        model, eff = r["model"], r["effort"] or ""
+        key = model if not eff else "%s-%s" % (model, eff)
+        ses = by_sess.setdefault(sid, {})
+        s = ses.setdefault(key, {"model": model, "effort": eff, "m": {}})
+        cell = s["m"].setdefault(r["minute"] - start_min, [0, 0, 0, 0.0])
+        cell[0] += r["input"]
+        cell[1] += r["output"]
+        cell[2] += r["cache_read"] + r["cache_write"]
+        cell[3] += cost
+
+    def tok(ses):
+        return sum(c[0] + c[1] + c[2] for s in ses.values() for c in s["m"].values())
+
+    out = []
+    for sid in sorted(by_sess, key=lambda k: (-tok(by_sess[k]), k)):
+        ses = by_sess[sid]
+        series = []
+        for key in sorted(ses):
+            s = ses[key]
+            idxs = sorted(s["m"])
+            cells = [s["m"][i] for i in idxs]
+            series.append({"key": key, "model": s["model"], "effort": s["effort"], "t": idxs,
+                           "input": [c[0] for c in cells], "output": [c[1] for c in cells],
+                           "cache": [c[2] for c in cells], "cost": [round(c[3], 6) for c in cells]})
+        out.append({"id": sid, "title": titles.get(sid) or None, "series": series})
+    return out
+
+
 def build_platform_payload(store, platform, now, status_info):
     status_info = status_info or {}
     now_min = int(now // 60)
@@ -169,6 +213,8 @@ def build_platform_payload(store, platform, now, status_info):
 
     def total(s):
         return sum(c[0] + c[1] + c[2] for c in s["m"].values())
+
+    sessions = build_sessions(store, platform, start_min, allocated)
 
     out_series = []
     for key in sorted(series, key=lambda k: (-total(series[k]), k)):
@@ -219,7 +265,7 @@ def build_platform_payload(store, platform, now, status_info):
 
     return {"status": status_info.get("status", "ok"),
             "start": iso(start_min * 60), "minutes": MINUTES,
-            "series": out_series, "subagent_runs": runs,
+            "series": out_series, "sessions": sessions, "subagent_runs": runs,
             "plan": _plan_block(store, platform, now, status_info.get("plan")),
             "meta": meta}
 

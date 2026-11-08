@@ -66,6 +66,49 @@
     return out;
   }
 
+  // Name shown for a session: its title, else a short id ("Conversation" for Cursor chats).
+  function sessionLabel(platformId, ses) {
+    var t = ses && typeof ses.title === 'string' ? ses.title.trim() : '';
+    if (t) return t;
+    var id = String((ses && ses.id) || '');
+    if (platformId !== 'cursor') return 'Session ' + id.slice(0, 8);
+    var m = /^agent-(.*)$/i.exec(id);   // Cursor agent conversations carry an agent- prefix
+    return m ? 'Cursor agent ' + m[1].slice(0, 6) : 'Conversation ' + id.slice(0, 6);
+  }
+
+  // Sessions with usage inside the window, sorted by the metric (then tokens).
+  // Each: { id, title, label, tokens, cost, lastMs, models: { key: {key, model, effort, tokens, cost} }, keys: [model keys, biggest first] }
+  function sessionStats(plat, fr, platformId, metric) {
+    var out = [];
+    var by = metric === 'cost' ? 'cost' : 'tokens';
+    (plat.sessions || []).forEach(function (ses) {
+      var r = { id: ses.id, title: ses.title || null, label: sessionLabel(platformId, ses),
+                tokens: 0, cost: 0, lastMs: null, models: {}, keys: [] };
+      (ses.series || []).forEach(function (s) {
+        var m = { key: s.key, model: s.model, effort: s.effort || '', tokens: 0, cost: 0 };
+        var t = s.t || [], last = null;
+        for (var i = 0; i < t.length; i++) {
+          if (t[i] < fr.loIdx || t[i] > fr.endIdx) continue;
+          m.tokens += arr(s.input, i) + arr(s.output, i) + arr(s.cache, i);
+          m.cost += arr(s.cost, i);
+          last = t[i];
+        }
+        if (m.tokens <= 0 && m.cost <= 0) return;
+        var lm = fr.startMs + last * 60000;
+        if (r.lastMs == null || lm > r.lastMs) r.lastMs = lm;
+        if (r.models[s.key]) { r.models[s.key].tokens += m.tokens; r.models[s.key].cost += m.cost; }
+        else r.models[s.key] = m;
+        r.tokens += m.tokens; r.cost += m.cost;
+      });
+      r.keys = Object.keys(r.models).sort(function (a, b) {
+        return r.models[b][by] - r.models[a][by] || r.models[b].tokens - r.models[a].tokens || (a < b ? -1 : 1);
+      });
+      if (r.keys.length) out.push(r);
+    });
+    out.sort(function (a, b) { return b[by] - a[by] || b.tokens - a.tokens || (a.id < b.id ? -1 : 1); });
+    return out;
+  }
+
   function totals(rows) {
     var t = { tokens: 0, cost: 0, requests: 0, models: 0, subTokens: 0, subCost: 0, input: 0, output: 0, cache: 0, cacheRead: 0, subCacheRead: 0, hasCacheRead: false };
     var seen = {}, allHave = true;
@@ -336,7 +379,7 @@
   TokenBurn.stats = {
     AGENT_SUFFIX: AGENT_SUFFIX, agentSplitRows: agentSplitRows,
     WINDOWS: WINDOWS, DEFAULT_WINDOW: DEFAULT_WINDOW, windowDef: windowDef, frame: frame,
-    seriesStats: seriesStats, totals: totals, cacheHitRate: cacheHitRate, ioRatio: ioRatio,
+    seriesStats: seriesStats, sessionStats: sessionStats, sessionLabel: sessionLabel, totals: totals, cacheHitRate: cacheHitRate, ioRatio: ioRatio,
     valueStats: valueStats, forecastPool: forecastPool, forecastLookback: forecastLookback, cacheSupported: cacheSupported, pctText: pctText, cumulativeSeries: cumulativeSeries,
     runsInWindow: runsInWindow, planStats: planStats,
     SPANS: SPANS, DEFAULT_SPAN: DEFAULT_SPAN, spanDef: spanDef,

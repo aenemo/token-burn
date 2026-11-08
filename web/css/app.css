@@ -91,14 +91,14 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .cols[hidden], .cols > section[hidden] { display: none; }
 @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
 
-/* Align corresponding blocks (head, tiles, 6 cards) of the columns: each visible
-   column section spans the same 8 row tracks via subgrid, so any visible subset
+/* Align corresponding blocks (head, tiles, 7 cards) of the columns: each visible
+   column section spans the same 9 row tracks via subgrid, so any visible subset
    lines up. The stacked layout keeps the plain flow. */
 @supports (grid-template-rows: subgrid) {
   @media (min-width: 1101px) {
     .cols { column-gap: 16px; row-gap: 0; align-items: stretch; }
     .cols > section:not([hidden]) {
-      display: grid; grid-template-rows: subgrid; grid-row: span 8; row-gap: 0; align-items: stretch;
+      display: grid; grid-template-rows: subgrid; grid-row: span 9; row-gap: 0; align-items: stretch;
     }
     .cols > section .tiles { align-content: start; }
   }
@@ -148,6 +148,11 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .use-callout .uc-head { display: flex; align-items: center; gap: 6px; font-weight: 650; overflow-wrap: anywhere; }
 .use-callout .uc-val strong { font-size: 15px; }
 .use-callout .uc-sub { opacity: 0.8; }
+.sessions-box { position: relative; height: 120px; min-width: 0; }
+.sessions-table td:nth-child(-n+2) { white-space: normal; min-width: 9em; }
+.sess-models { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.sess-model { display: inline-flex; align-items: center; gap: 4px; padding: 1px 6px; border: 1px solid var(--grid);
+  border-radius: 10px; background: transparent; color: inherit; font: inherit; font-size: 12px; cursor: pointer; }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .chip {
   font: inherit; font-size: 12.5px; color: var(--fg); background: transparent; border: 1px solid var(--border);

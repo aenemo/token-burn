@@ -32,6 +32,12 @@ WHERE m.type IN ('assistant', 'compaction') AND m.time_updated >= ? AND json_val
 ORDER BY m.time_updated, m.id
 """
 
+# Titles of top-level sessions. A subagent's usage is shown under its parent session, so child titles are not needed.
+_TITLE_QUERY = """
+SELECT id, title FROM session_v2
+WHERE (parent_id IS NULL OR parent_id = '') AND title IS NOT NULL AND title <> '' AND time_updated >= ?
+"""
+
 
 def num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else 0
@@ -86,14 +92,22 @@ def collect(store, now, log, backfill=False):
         return {"status": "opencode collection failed (%s)" % type(e).__name__, "meta": {}}
 
 
-def _read_rows(path, start_ms):
+def _read_rows(path, start_ms, title_ms=0):
     """Rows from the opencode db, or None for an unsupported layout. Only these sqlite errors are opencode's."""
     try:
         con = connect(path)
         try:
             if not _has_v2(con):
                 return None
-            return con.execute(_QUERY, (start_ms,)).fetchall()
+            rows = con.execute(_QUERY, (start_ms,)).fetchall()
+            try:
+                titles = con.execute(_TITLE_QUERY, (title_ms,)).fetchall()
+            except sqlite3.Error:
+                try:  # a layout without time_updated: every top-level title
+                    titles = con.execute(_TITLE_QUERY.split(" AND time_updated")[0]).fetchall()
+                except sqlite3.Error:
+                    titles = []
+            return rows, titles
         finally:
             con.close()
     except sqlite3.Error as e:
@@ -108,9 +122,13 @@ def _collect(store, now, log, backfill):
     last_ts = store.kv_get(LAST_TS_KEY)
     full = bool(backfill) or not isinstance(last_ts, (int, float))
     start_ms = cutoff_ms if full else max(cutoff_ms, int(last_ts) - OVERLAP_MS)
-    rows = _read_rows(path, start_ms)
-    if rows is None:
+    got = _read_rows(path, start_ms, cutoff_ms)
+    if got is None:
         return {"status": UNSUPPORTED, "meta": {}}
+    rows, titles = got
+    for sid, title in titles:
+        if isinstance(sid, str) and isinstance(title, str):
+            store.upsert_session_title(PLATFORM, sid, title, "app")
 
     newest = 0 if full else int(last_ts)
     inflight_from = None

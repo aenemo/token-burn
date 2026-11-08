@@ -79,6 +79,10 @@
         '<div class="chart-box"><canvas class="use-canvas" role="img"></canvas></div>' +
         '<div class="agents-cap note" hidden></div><div class="rolling-cap note" hidden></div><div class="rolling-partial note" hidden></div>' +
         '<div class="chips" role="group"></div><div class="notes use-notes"></div></section>' +
+      '<section class="card"><h3>Sessions</h3>' +
+        '<div class="sessions-box"><canvas class="sessions-canvas" role="img"></canvas></div>' +
+        '<div class="sessions-empty empty" hidden>No sessions with usage in this window.</div>' +
+        '<div class="notes sessions-notes"></div><div class="sessions-table"></div></section>' +
       '<section class="card"><h3>Plan usage</h3><div class="plan-banner"></div>' +
         '<div class="chart-box plan-box"><canvas class="plan-canvas" role="img"></canvas></div>' +
         '<div class="plan-table"></div><div class="plan-lookup note"></div></section>' +
@@ -91,6 +95,7 @@
     root.querySelector('h2').textContent = P.name;
     root.querySelector('.use-canvas').setAttribute('aria-label', P.name + ' cumulative usage chart');
     root.querySelector('.plan-canvas').setAttribute('aria-label', P.name + ' plan usage chart');
+    root.querySelector('.sessions-canvas').setAttribute('aria-label', P.name + ' usage by session and model chart');
     this.q = function (sel) { return root.querySelector(sel); };
     this.callout = el('div', 'use-callout');
     this.callout.hidden = true;
@@ -107,6 +112,33 @@
       host: root, getMetric: metric, onSelect: function (k) { self.toggle(k); }
     });
     this.planChart = typeof Chart === 'undefined' ? null : C.createPlan(this.q('.plan-canvas'), { host: root });
+    this.sessChart = typeof Chart === 'undefined' ? null : C.createSessions(this.q('.sessions-canvas'), {
+      host: root, getMetric: metric, onSelect: function (k) { self.toggle(k); }
+    });
+    var lastText = function (r) { return r.lastMs == null ? 'n/a' : F.dt(r.lastMs); };
+    this.sessTable = T.create(this.q('.sessions-table'), {
+      sortKey: 'tokens', sortDir: 'desc', filters: false, emptyText: 'No sessions with usage in this window.',
+      rowClass: function (r) { return self.selected != null && r.models[self.selected] ? 'sel' : ''; },
+      columns: [
+        { key: 'label', label: 'Session', v: function (r) { return r.label; }, title: function (r) { return r.title || 'No title recorded for this session'; } },
+        { key: 'models', label: 'Models', v: function (r) { return r.keys.join(', '); }, node: function (r) {
+            var s = el('span', 'sess-models');
+            r.keys.forEach(function (k) {
+              var b = el('button', 'sess-model');
+              b.type = 'button';
+              b.title = k + ': ' + F.metricValue(metric(), metric() === 'cost' ? r.models[k].cost : r.models[k].tokens);
+              b.appendChild(swatch(colorOf(k)));
+              b.appendChild(document.createTextNode(k));
+              b.addEventListener('click', function (e) { e.stopPropagation(); self.toggle(k); });
+              s.appendChild(b);
+            });
+            return s;
+          } },
+        { key: 'tokens', label: 'Tokens', num: true, v: function (r) { return r.tokens; }, text: function (r) { return F.tokens(r.tokens); }, title: function (r) { return F.full(r.tokens) + ' tokens'; } },
+        { key: 'cost', label: 'Cost', num: true, v: function (r) { return r.cost; }, text: function (r) { return F.usd(r.cost); } },
+        { key: 'last', label: 'Last active', num: true, v: function (r) { return r.lastMs; }, text: lastText }
+      ]
+    });
 
     function metricCell(getTok, getCost) {
       return {
@@ -360,6 +392,8 @@
   Column.prototype.applyHighlight = function () {
     var self = this;
     if (this.useChart) C.restyleUse(this.useChart, this.selected, function (k) { return self.color(k); });
+    if (this.sessChart) C.restyleSessions(this.sessChart, this.selected, function (k) { return self.color(k); });
+    if (this.sessTable) this.sessTable.rerender();
     Array.prototype.forEach.call(this.q('.chips').children, function (b) {
       var on = b.getAttribute('data-key') === self.selected;
       b.setAttribute('aria-pressed', on ? 'true' : 'false');
@@ -429,6 +463,7 @@
     if (!plat) {
       pill.textContent = 'no data'; pill.className = 'pill err'; pill.title = '';
       this.statsTable.update([]); this.primTable.update([]); this.subTable.update([]); this.planTable.update([]);
+      this.sessTable.update([]);
       this.q('.tiles').textContent = '';
       this.q('.value-out').textContent = ''; this.q('.forecast-out').textContent = '';
       this.calloutCtx = null; this.updateCallout();
@@ -549,6 +584,8 @@
     if (!gRows.length) chips.appendChild(el('span', 'empty', 'No usage recorded in this window.'));
     addNotes(this.q('.use-notes'), P.notes(meta));
 
+    this.renderSessions(plat, fr, metric);
+
     // plan
     var banner = this.q('.plan-banner');
     banner.textContent = '';
@@ -587,6 +624,22 @@
     this.calloutCtx = { rows: gRows, fr: fr, metric: metric, spanDef: spanDef, winLabel: S.windowDef(state.win).label };
     this.updateCallout();
   };
+  Column.prototype.renderSessions = function (plat, fr, metric) {
+    var self = this, P = this.p;
+    var rows = S.sessionStats(plat, fr, P.id, metric);
+    var empty = !rows.length;
+    this.q('.sessions-box').hidden = empty;
+    this.q('.sessions-empty').hidden = !empty;
+    if (this.sessChart && !empty) {
+      C.updateSessions(this.sessChart, rows, metric, this.selected, function (k) { return self.color(k); }, this.q('.sessions-box'));
+    }
+    this.sessTable.update(rows);
+    var notes = [];
+    if (rows.length > C.SESSION_TOP) notes.push('The chart shows the top ' + C.SESSION_TOP + ' sessions; the rest are combined under Other. The table lists them all.');
+    if (P.id === 'cursor') notes.push('Cursor chat names come from this computer’s Cursor app; other conversations show a short ID.');
+    if (!Array.isArray(plat.sessions)) notes.push('Session data appears after the next collection.');
+    addNotes(this.q('.sessions-notes'), notes);
+  };
   Column.prototype.applyChipsOnly = function () {
     var self = this;
     Array.prototype.forEach.call(this.q('.chips').children, function (b) {
@@ -598,6 +651,7 @@
   Column.prototype.resizeCharts = function () {
     if (this.useChart) this.useChart.resize();
     if (this.planChart) this.planChart.resize();
+    if (this.sessChart) this.sessChart.resize();
   };
   Column.prototype.refreshTheme = function () {
     if (this.useChart) this.useChart.update('none');

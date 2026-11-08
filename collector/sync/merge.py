@@ -132,6 +132,95 @@ def series_out(cells_map, start_min):
     return [x[2] for x in items]
 
 
+# ---- sessions
+
+def local_sessions(payload, start_min, salt):
+    """{match id: {"id", "title", "series": cells map of [input, output, cache, cost]}} from a local
+    payload. The match id is the hashed id peers export, so the same session read under another
+    machine id of this computer (or a Cursor conversation seen elsewhere) lines up."""
+    out = {}
+    for ses in (payload or {}).get("sessions") or []:
+        if not isinstance(ses, dict) or not isinstance(ses.get("series"), list):
+            continue
+        raw = str(ses.get("id") or "")
+        ent = out.setdefault(validate.session_hash(salt, raw),
+                             {"id": raw, "title": ses.get("title") or None, "series": {}})
+        for s in ses["series"]:
+            if not isinstance(s, dict) or not isinstance(s.get("t"), list):
+                continue
+            model, effort = s.get("model") or "", s.get("effort") or ""
+            key = s.get("key") or ("%s-%s" % (model, effort) if effort else model)
+            se = ent["series"].setdefault(key, {"model": model, "effort": effort, "cells": {}})
+            cols = [s.get(f) or [] for f in validate.SESSION_FIELDS]
+            for i, t in enumerate(s["t"]):
+                cell = se["cells"].setdefault(start_min + int(t), [0, 0, 0, 0.0])
+                for j, col in enumerate(cols):
+                    if i < len(col):
+                        cell[j] += _num(col[i])
+    return out
+
+
+def doc_sessions(plat_doc):
+    """The same structure from a validated machine-file platform block (absolute `m`)."""
+    out = {}
+    for ses in (plat_doc or {}).get("sessions") or []:
+        ent = out.setdefault(ses["id"], {"id": ses["id"], "title": ses["title"], "series": {}})
+        for s in ses["series"]:
+            se = ent["series"].setdefault(s["key"], {"model": s["model"], "effort": s["effort"],
+                                                     "cells": {}})
+            for i, m in enumerate(s["m"]):
+                se["cells"][m] = [s[f][i] for f in validate.SESSION_FIELDS]
+    return out
+
+
+def combine_sessions(maps):
+    """Union of session maps. One id is one session (ids are unique per physical computer, and a
+    Cursor conversation is the same on every computer), so repeated cells take the per-field max.
+    The first map's id and title win; a later title fills a missing one."""
+    out = {}
+    for sm in maps:
+        for mid, ent in sm.items():
+            cur = out.get(mid)
+            if cur is None:
+                out[mid] = {"id": ent["id"], "title": ent["title"],
+                            "series": {k: {"model": v["model"], "effort": v["effort"],
+                                           "cells": {m: list(c) for m, c in v["cells"].items()}}
+                                       for k, v in ent["series"].items()}}
+                continue
+            if not cur["title"]:
+                cur["title"] = ent["title"]
+            for key, se in ent["series"].items():
+                cs = cur["series"].setdefault(key, {"model": se["model"], "effort": se["effort"],
+                                                    "cells": {}})
+                for m, c in se["cells"].items():
+                    old = cs["cells"].get(m)
+                    cs["cells"][m] = list(c) if old is None else [max(a, b) for a, b in zip(old, c)]
+    return out
+
+
+def sessions_out(sessions, start_min):
+    """Payload-shaped sessions list: t relative to start_min, 0 <= t < MINUTES, most tokens first."""
+    items = []
+    for ent in sessions.values():
+        series, tok = [], 0
+        for key in sorted(ent["series"]):
+            se = ent["series"][key]
+            ts = sorted(m - start_min for m in se["cells"] if 0 <= m - start_min < MINUTES)
+            if not ts:
+                continue
+            cells = [se["cells"][start_min + t] for t in ts]
+            tok += sum(c[0] + c[1] + c[2] for c in cells)
+            s = {"key": key, "model": se["model"], "effort": se["effort"], "t": ts}
+            for j, f in enumerate(validate.SESSION_FIELDS):
+                vals = [c[j] for c in cells]
+                s[f] = [round(float(v), 6) for v in vals] if f == "cost" else [int(v) for v in vals]
+            series.append(s)
+        if series:
+            items.append((-tok, ent["id"], {"id": ent["id"], "title": ent["title"], "series": series}))
+    items.sort(key=lambda x: (x[0], x[1]))
+    return [x[2] for x in items]
+
+
 # ---- runs
 
 def _peer_run(run):
@@ -305,15 +394,21 @@ def merge_platform(platform, local_payload, peers, now, self_id, local_plan_samp
     groups, reps = group_reps(peers, self_id, self_fp)
     gkey = {i: k for k, ids in groups.items() for i in ids}
     contrib = []     # (id, group key, cells_map, runs) for every computer with an installed platform
+    gsess = {}       # group key: [session maps]
     if local_installed:
         runs = [r for r in local.get("subagent_runs") or [] if isinstance(r, dict)]
         contrib.append((self_id, SELF_GROUP, local_cells(local, start_min), runs))
+        salt = validate.session_salt(platform, self_fp, self_id)
+        gsess.setdefault(SELF_GROUP, []).append(local_sessions(local, start_min, salt))
     if adopted is not None:
         contrib.append((ADOPTED_ID, SELF_GROUP, doc_cells(adopted),
                         [_peer_run(r) for r in adopted.get("subagent_runs") or []]))
+        gsess.setdefault(SELF_GROUP, []).append(doc_sessions(adopted))
     for mid, pl in sorted(peer_plats, key=lambda x: (-_written(by_id[x[0]]), x[0])):
-        contrib.append((mid, gkey.get(mid, "id:" + mid), doc_cells(pl),
-                        [_peer_run(r) for r in pl.get("subagent_runs") or []]))
+        g = gkey.get(mid, "id:" + mid)
+        contrib.append((mid, g, doc_cells(pl), [_peer_run(r) for r in pl.get("subagent_runs") or []]))
+        gsess.setdefault(g, []).append(doc_sessions(pl))
+    gsess = {g: combine_sessions(maps) for g, maps in gsess.items()}
 
     gcells, gruns = {}, {}
     for _, g, cm, rs in contrib:
@@ -329,6 +424,7 @@ def merge_platform(platform, local_payload, peers, now, self_id, local_plan_samp
         "status": FROM_OTHERS, "start": iso(start_min * 60), "minutes": MINUTES,
         "series": [], "subagent_runs": [], "plan": {}, "meta": {}, "installed": True}
     out["series"] = series_out(merged, start_min)
+    out["sessions"] = sessions_out(combine_sessions(list(gsess.values())), start_min)
     out["subagent_runs"] = runs
     if not local_installed:
         out["status"] = FROM_OTHERS
@@ -350,6 +446,7 @@ def merge_platform(platform, local_payload, peers, now, self_id, local_plan_samp
         # the only one), so a computer missing from here means zero rather than "unknown".
         out["machines"] = {
             reps[g]: {"series": series_out(gcells[g], start_min),
+                      "sessions": sessions_out(gsess.get(g) or {}, start_min),
                       "subagent_runs": merge_runs([gruns[g]], lo_ts)}
             for g in with_data if g in reps}
 

@@ -1,8 +1,10 @@
 """Build this computer's export from LOCAL payloads and write it to the shared folder.
 
 The export is built before any merge, so data from other computers is never re-exported. It holds
-token counts, costs, model names, hashed agent ids, plan percentages and this computer's name and
-OS. It never holds prompts, session ids, raw agent ids, paths or credentials.
+token counts, costs, model names, hashed agent and session ids, session titles (only from Claude
+ai-title and custom-title entries, the opencode session title and the Cursor chat name), plan
+percentages and this computer's name and OS. It never holds prompts, raw session or agent ids, paths
+or credentials.
 """
 import gzip
 import hashlib
@@ -147,6 +149,84 @@ def _series_out(cells_map):
     return out
 
 
+# ---- sessions
+
+def _payload_sessions(payload, now_min, salt):
+    """{hashed id: {"title", "series": {key: {"model", "effort", "cells": {abs_minute: [4]}}}}}."""
+    start = parse_ts(payload.get("start"))
+    start_min = int(start // 60) if start is not None else now_min - MINUTES + 1
+    lo = now_min - MINUTES + 1
+    out = {}
+    for ses in payload.get("sessions") or []:
+        if not isinstance(ses, dict) or not isinstance(ses.get("series"), list):
+            continue
+        sid = validate.session_hash(salt, str(ses.get("id") or ""))
+        title = ses.get("title")
+        title = validate.strip_control(title, validate.TITLE_MAX) if isinstance(title, str) else ""
+        ent = out.setdefault(sid, {"title": title or None, "series": {}})
+        for s in ses["series"]:
+            if not isinstance(s, dict) or not isinstance(s.get("t"), list):
+                continue
+            model = validate.strip_control(str(s.get("model") or ""), 120)
+            effort = validate.strip_control(str(s.get("effort") or ""), 120)
+            key = validate.strip_control(str(s.get("key") or ""), 120) or (
+                "%s-%s" % (model, effort) if effort else model)
+            se = ent["series"].setdefault(key, {"model": model, "effort": effort, "cells": {}})
+            cols = [s.get(f) or [] for f in validate.SESSION_FIELDS]
+            for i, t in enumerate(s["t"]):
+                m = start_min + int(t)
+                if m < lo or m > now_min:
+                    continue
+                cell = se["cells"].setdefault(m, [0, 0, 0, 0.0])
+                for j, col in enumerate(cols):
+                    if i < len(col) and isinstance(col[i], (int, float)):
+                        cell[j] += col[i]
+    return out
+
+
+def _doc_sessions(plat_doc):
+    out = {}
+    for ses in plat_doc.get("sessions") or []:
+        ent = out.setdefault(ses["id"], {"title": ses["title"], "series": {}})
+        for s in ses["series"]:
+            se = ent["series"].setdefault(s["key"], {"model": s["model"], "effort": s["effort"],
+                                                     "cells": {}})
+            for i, m in enumerate(s["m"]):
+                se["cells"][m] = [s[f][i] for f in validate.SESSION_FIELDS]
+    return out
+
+
+def _max_merge_sessions(base, other):
+    for sid, ent in other.items():
+        b = base.setdefault(sid, {"title": ent["title"], "series": {}})
+        if not b["title"]:
+            b["title"] = ent["title"]
+        _max_merge(b["series"], ent["series"])
+
+
+def _sessions_out(sessions):
+    def tok(ent):
+        return sum(c[0] + c[1] + c[2] for se in ent["series"].values() for c in se["cells"].values())
+    out = []
+    for sid in sorted(sessions, key=lambda k: (-tok(sessions[k]), k)):
+        ent = sessions[sid]
+        series = []
+        for key in sorted(ent["series"]):
+            se = ent["series"][key]
+            ms = sorted(se["cells"])
+            if not ms:
+                continue
+            s = {"key": key, "model": se["model"], "effort": se["effort"], "m": ms}
+            for j, f in enumerate(validate.SESSION_FIELDS):
+                vals = [se["cells"][m][j] for m in ms]
+                s[f] = [round(float(v), 6) for v in vals] if f == "cost" else [int(v) for v in vals]
+            series.append(s)
+        if series:
+            out.append({"id": sid, "title": ent["title"],
+                        "series": series[:validate.MAX_SESSION_SERIES]})
+    return out[:validate.MAX_SESSIONS]
+
+
 # ---- runs and plan
 
 def _export_runs(machine_id, runs, lo_ts):
@@ -280,6 +360,10 @@ def build_export(local_payloads, local_plan_samples, cfg, now, app_version=None,
         cells = _payload_cells(payload, now_min)
         if ad:
             _max_merge(cells, _doc_cells(ad))
+        sessions = _payload_sessions(payload, now_min,
+                                     validate.session_salt(name, host_fp(), machine_id))
+        if ad:
+            _max_merge_sessions(sessions, _doc_sessions(ad))
         runs = _export_runs(machine_id, payload.get("subagent_runs"), lo_ts)
         if ad:
             runs = _merge_runs(runs, ad["subagent_runs"])
@@ -289,6 +373,7 @@ def build_export(local_payloads, local_plan_samples, cfg, now, app_version=None,
             "status": validate.strip_control(str(payload.get("status") or (ad or {}).get("status")
                                                  or "ok"), 120),
             "series": _series_out(cells),
+            "sessions": _sessions_out(sessions),
             "subagent_runs": runs[:validate.MAX_RUNS],
             "plan": _export_plan((local_plan_samples or {}).get(name), plan_block.get("last_lookup"),
                                  ad["plan"] if ad else None, now)}

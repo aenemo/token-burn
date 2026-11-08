@@ -16,6 +16,9 @@ AUTO = "Auto Cost"
 AUTO_LABELS = {"default", "auto", "<synthetic>", ""}
 DAYS = 30
 OFFSETS_KEY = "claude:offsets"
+TITLES_KEY = "claude:titles_v1"
+# Session titles come only from these entries. last-prompt holds prompt text and is never read.
+TITLE_TYPES = {"ai-title": ("aiTitle", "ai"), "custom-title": ("customTitle", "custom")}
 
 
 def label(model):
@@ -66,6 +69,42 @@ def _meta_type(path):
         return ""
 
 
+def _is_title_line(raw):
+    return b'"ai-title"' in raw or b'"custom-title"' in raw
+
+
+def _take_title(store, o, session_default):
+    """Store the title from an ai-title or custom-title entry. True when o was a title entry."""
+    spec = TITLE_TYPES.get(o.get("type"))
+    if spec is None:
+        return False
+    title = o.get(spec[0])
+    sess = o.get("sessionId") or session_default
+    if isinstance(title, str) and isinstance(sess, str):
+        store.upsert_session_title(PLATFORM, sess, title, spec[1])
+    return True
+
+
+def _scan_titles(store, path, is_sub_file):
+    """Read only the title entries of a whole file (one-off backfill for files read before titles existed)."""
+    if is_sub_file:
+        return
+    try:
+        f = open(path, "rb")
+    except OSError:
+        return
+    with f:
+        for raw in f:
+            if not _is_title_line(raw):
+                continue
+            try:
+                o = json.loads(raw)
+            except ValueError:
+                continue
+            if isinstance(o, dict):
+                _take_title(store, o, path.stem)
+
+
 def _process_file(store, path, is_sub_file, offsets, cutoff_min, stats, runs):
     key = str(path)
     try:
@@ -97,13 +136,15 @@ def _process_file(store, path, is_sub_file, offsets, cutoff_min, stats, runs):
         if not raw:
             continue
         is_cost = b'"cost-state"' in raw
-        if not is_cost and b'"assistant"' not in raw:
+        if not is_cost and b'"assistant"' not in raw and not _is_title_line(raw):
             continue
         try:
             o = json.loads(raw)
         except ValueError:
             continue
         if not isinstance(o, dict):
+            continue
+        if _take_title(store, o, session_default):
             continue
         typ = o.get("type")
         sess = o.get("sessionId") or session_default
@@ -225,6 +266,7 @@ def collect(store, now, log, backfill=False):
         if not isinstance(offsets, dict):
             offsets = {}
         runs = {}
+        titles_done = bool(store.kv_get(TITLES_KEY, False))
         for path, is_sub in discover(util.claude_dir()):
             try:
                 if path.stat().st_mtime < cutoff_epoch:
@@ -233,12 +275,15 @@ def collect(store, now, log, backfill=False):
                 continue
             nfiles += 1
             try:
+                if not titles_done and offsets.get(str(path)):
+                    _scan_titles(store, path, is_sub)
                 _process_file(store, path, is_sub, offsets, cutoff_min, stats, runs)
             except Exception as e:
                 log.warning("file error %s: %s", path.name, type(e).__name__)
         for k in [k for k in offsets if not os.path.exists(k)]:
             del offsets[k]
         store.kv_set(OFFSETS_KEY, offsets)
+        store.kv_set(TITLES_KEY, True)
 
         hook_runs = {}
         _read_hook_log(util.CLAUDE_HOOK_LOG, cutoff_epoch, hook_runs)

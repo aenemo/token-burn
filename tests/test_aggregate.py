@@ -317,7 +317,7 @@ class UsageJsonTests(Base):
         self.assertEqual(doc["token_refresh_s"], 60)
         self.assertEqual(doc["plan_refresh_s"], 590)
         self.assertEqual(set(doc["platforms"]), {"claude", "cursor"})
-        self.assertEqual(set(a), {"status", "start", "minutes", "series", "subagent_runs", "plan", "meta"})
+        self.assertEqual(set(a), {"status", "start", "minutes", "series", "sessions", "subagent_runs", "plan", "meta"})
         import json
         json.dumps(doc)
 

@@ -1,7 +1,8 @@
-"""SQLite store (WAL) for per-minute usage, session totals, subagent runs and plan samples."""
+"""SQLite store (WAL) for per-minute usage, session totals and titles, subagent runs and plan samples."""
 import json
 import os
 import sqlite3
+import unicodedata
 from pathlib import Path
 
 from collector import util
@@ -27,9 +28,19 @@ CREATE TABLE IF NOT EXISTS plan_samples(
 CREATE TABLE IF NOT EXISTS seen(
   platform TEXT, key TEXT, minute INT, val INT DEFAULT 0, PRIMARY KEY(platform, key));
 CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS session_meta(
+  platform TEXT, session_id TEXT, title TEXT, source TEXT, updated REAL,
+  PRIMARY KEY(platform, session_id));
 CREATE INDEX IF NOT EXISTS ix_usage_minute ON usage_minute(platform, minute);
 CREATE INDEX IF NOT EXISTS ix_seen_minute ON seen(minute);
 """
+
+
+def clean_title(title, cap=120):
+    """Collapse whitespace, drop control and format characters, trim to cap characters."""
+    s = "".join(" " if ch in "\t\n\r" else ch for ch in str(title or "")
+                if ch in "\t\n\r" or unicodedata.category(ch)[0] != "C")
+    return " ".join(s.split())[:cap]
 
 
 class Store:
@@ -147,6 +158,36 @@ class Store:
              pick_i(run.output_tokens, "output"), pick_i(run.cache_read_tokens, "cache_read"),
              pick_i(run.cache_write_tokens, "cache_write")))
 
+    # ---- session titles
+    # Title sources, weakest first: a stronger source is never replaced by a weaker one, an equal one replaces.
+    TITLE_RANK = {"ai": 1, "chat": 1, "app": 1, "custom": 2}
+    TITLE_MAX = 120
+
+    def upsert_session_title(self, platform, session_id, title, source, t=0.0):
+        """Store a session title (control characters stripped, capped). Returns True when it changed."""
+        title = clean_title(title, self.TITLE_MAX)
+        if not session_id or not title:
+            return False
+        old = self.db.execute("SELECT title, source FROM session_meta WHERE platform=? AND session_id=?",
+                              (platform, session_id)).fetchone()
+        if old is not None:
+            if self.TITLE_RANK.get(old["source"], 0) > self.TITLE_RANK.get(source, 0):
+                return False
+            if old["title"] == title and old["source"] == source:
+                return False
+        self.db.execute("INSERT OR REPLACE INTO session_meta(platform, session_id, title, source, updated)"
+                        " VALUES(?,?,?,?,?)", (platform, session_id, title, source, float(t or 0)))
+        return True
+
+    def session_ids(self, platform):
+        """Distinct session ids with stored minute rows."""
+        return [r[0] for r in self.db.execute(
+            "SELECT DISTINCT session_id FROM usage_minute WHERE platform=? AND session_id<>''", (platform,))]
+
+    def session_titles(self, platform):
+        return {r["session_id"]: r["title"] for r in self.db.execute(
+            "SELECT session_id, title FROM session_meta WHERE platform=?", (platform,))}
+
     # ---- plan samples
     def add_plan_sample(self, platform, t, pools):
         self.db.execute("INSERT OR REPLACE INTO plan_samples(platform, t, pools) VALUES(?,?,?)",
@@ -210,7 +251,7 @@ class Store:
         self.db.execute("DELETE FROM seen WHERE minute<?", (c,))
         self.db.execute("DELETE FROM plan_samples WHERE t<?", (cutoff_t,))
         self.db.execute("DELETE FROM subagent_runs WHERE t<?", (cutoff_t,))
-        for table in ("session_tokens", "session_cost"):
+        for table in ("session_tokens", "session_cost", "session_meta"):
             self.db.execute(
                 "DELETE FROM %s WHERE NOT EXISTS (SELECT 1 FROM usage_minute u WHERE"
                 " u.platform=%s.platform AND u.session_id=%s.session_id)" % (table, table, table))

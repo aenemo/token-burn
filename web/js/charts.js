@@ -223,9 +223,98 @@
     chart.update('none');
   }
 
+  // ---------- sessions chart ----------
+  // One horizontal bar per session, stacked by model key in the usage graph's colours.
+  var SESSION_TOP = 15, SESSION_LABEL_MAX = 32, SESSION_BAR_PX = 26;
+  function shortLabel(s) { return s.length > SESSION_LABEL_MAX ? s.slice(0, SESSION_LABEL_MAX - 1) + '…' : s; }
+
+  // cfg: { host, getMetric(), onSelect(key) }
+  function createSessions(canvas, cfg) {
+    var o = {
+      responsive: true, maintainAspectRatio: false, animation: false, indexAxis: 'y',
+      interaction: { mode: 'nearest', intersect: true, axis: 'y' },
+      scales: {
+        x: { stacked: true, beginAtZero: true,
+             ticks: { color: function () { return cssVar('--muted', cfg.host); }, maxTicksLimit: 6,
+                      callback: function (v) { return F.metricValue(cfg.getMetric(), v); } },
+             grid: { color: function () { return cssVar('--grid', cfg.host); } } },
+        y: { stacked: true,
+             ticks: { color: function () { return cssVar('--fg', cfg.host); }, autoSkip: false,
+                      callback: function (v) { return shortLabel(String(this.getLabelForValue(v))); } },
+             grid: { display: false } }
+      },
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: {
+          title: function (items) { return items.length ? items[0].label : ''; },
+          label: function (c) { return c.dataset.label + ': ' + F.metricValue(cfg.getMetric(), c.parsed.x); },
+          footer: function (items) {
+            if (!items.length) return '';
+            var i = items[0].dataIndex, sum = 0;
+            items[0].chart.data.datasets.forEach(function (ds) { sum += ds.data[i] || 0; });
+            return 'Session total: ' + F.metricValue(cfg.getMetric(), sum);
+          } } }
+      },
+      onClick: function (evt, els, chart) {
+        if (!els.length || !cfg.onSelect) return;
+        var ds = chart.data.datasets[els[0].datasetIndex];
+        if (ds && ds.modelKey) cfg.onSelect(ds.modelKey);
+      }
+    };
+    return new Chart(canvas, { type: 'bar', data: { labels: [], datasets: [] }, options: o });
+  }
+
+  function styleSessionSet(ds, c, selected) {
+    var dim = selected != null && ds.modelKey !== selected;
+    ds.backgroundColor = rgba(c, dim ? 0.18 : 0.85);
+    ds.borderColor = rgba(c, dim ? 0.25 : 1);
+  }
+
+  // rows: sessionStats() result (already sorted by the metric). box: element whose height follows the bar count.
+  // Returns the number of bars drawn.
+  function updateSessions(chart, rows, metric, selected, colorOf, box) {
+    var by = metric === 'cost' ? 'cost' : 'tokens';
+    var top = rows.slice(0, SESSION_TOP), rest = rows.slice(SESSION_TOP);
+    var bars = top.map(function (r) { return { label: r.label, models: r.models }; });
+    if (rest.length) {
+      var other = {};
+      rest.forEach(function (r) {
+        Object.keys(r.models).forEach(function (k) {
+          var m = r.models[k];
+          if (!other[k]) other[k] = { key: k, tokens: 0, cost: 0 };
+          other[k].tokens += m.tokens; other[k].cost += m.cost;
+        });
+      });
+      bars.push({ label: 'Other (' + rest.length + ' session' + (rest.length === 1 ? '' : 's') + ')', models: other });
+    }
+    var keyTotal = {};
+    bars.forEach(function (b) {
+      Object.keys(b.models).forEach(function (k) { keyTotal[k] = (keyTotal[k] || 0) + b.models[k][by]; });
+    });
+    var keys = Object.keys(keyTotal).sort(function (a, b) { return keyTotal[b] - keyTotal[a] || (a < b ? -1 : 1); });
+    chart.data.labels = bars.map(function (b) { return b.label; });
+    chart.data.datasets = keys.map(function (k) {
+      var ds = { label: k, modelKey: k, borderWidth: 1, borderSkipped: false, barPercentage: 0.8, categoryPercentage: 0.9,
+                 data: bars.map(function (b) { return b.models[k] ? b.models[k][by] : 0; }) };
+      styleSessionSet(ds, colorOf(k), selected);
+      return ds;
+    });
+    if (box) box.style.height = Math.max(90, bars.length * SESSION_BAR_PX + 44) + 'px';
+    chart.resize();
+    chart.update('none');
+    return bars.length;
+  }
+
+  function restyleSessions(chart, selected, colorOf) {
+    chart.data.datasets.forEach(function (ds) { styleSessionSet(ds, colorOf(ds.modelKey), selected); });
+    chart.update('none');
+  }
+
   TokenBurn.charts = {
     cssVar: cssVar, rgba: rgba, rgbCss: rgbCss, makeTicks: makeTicks,
     createUse: createUse, updateUse: updateUse, updateRolling: updateRolling, restyleUse: restyleUse,
-    createPlan: createPlan, updatePlan: updatePlan
+    createPlan: createPlan, updatePlan: updatePlan,
+    createSessions: createSessions, updateSessions: updateSessions, restyleSessions: restyleSessions,
+    SESSION_TOP: SESSION_TOP
   };
 })();

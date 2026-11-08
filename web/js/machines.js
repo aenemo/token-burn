@@ -85,6 +85,22 @@
     return out;
   }
 
+  // Session ids are unique per computer for the filtered platforms, so the chosen computers' lists join without overlap.
+  function mergeSessions(parts) {
+    var out = [];
+    parts.forEach(function (list) { (list || []).forEach(function (s) { if (s) out.push(s); }); });
+    function tok(s) {
+      var n = 0;
+      (s.series || []).forEach(function (x) {
+        for (var i = 0; i < (x.t || []).length; i++) n += num(x.input, i) + num(x.output, i) + num(x.cache, i);
+      });
+      return n;
+    }
+    var withTok = out.map(function (s) { return { s: s, n: tok(s) }; });
+    withTok.sort(function (a, b) { return b.n - a.n; });
+    return withTok.map(function (x) { return x.s; });
+  }
+
   // Legacy fallback, used only when a platform has no `machines` key: which computers have the platform installed.
   function hasPlatform(m, p) {
     return !Array.isArray(m.platforms) || m.platforms.indexOf(p) >= 0;
@@ -104,16 +120,17 @@
       var copy = {};
       Object.keys(plat).forEach(function (k) { if (k !== 'machines') copy[k] = plat[k]; });
       if (mb && typeof mb === 'object') {
-        var parts = [], runs = [];
+        var parts = [], runs = [], sess = [];
         sel.forEach(function (id) {
-          if (mb[id]) { parts.push(mb[id].series); runs.push(mb[id].subagent_runs); }
+          if (mb[id]) { parts.push(mb[id].series); runs.push(mb[id].subagent_runs); sess.push(mb[id].sessions); }
         });
         copy.series = mergeSeries(parts);
         copy.subagent_runs = mergeRuns(runs);
+        copy.sessions = mergeSessions(sess);
       } else {
         // No breakdown key (older collector): keep the data only when a chosen computer has the platform installed.
         var keep = list(data).some(function (m) { return sel.indexOf(m.id) >= 0 && hasPlatform(m, p); });
-        if (!keep) { copy.series = []; copy.subagent_runs = []; }
+        if (!keep) { copy.series = []; copy.subagent_runs = []; copy.sessions = []; }
       }
       platforms[p] = copy;
     });
