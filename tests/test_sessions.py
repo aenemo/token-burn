@@ -436,6 +436,7 @@ class CursorMoreNames(StoreBase):
         root = self.tmp / "projects"
         work = self.tmp / "disk" / "My Work" / "RAG installer"
         work.mkdir(parents=True)
+        work = work.resolve()     # long names: Windows runners hand out 8.3 temp paths (RUNNER~1)
         slug = "-".join(cursor._slug(x) for x in work.parts[1:] if x)
         drive = work.parts[0]
         slug = (drive[0] + "-" + slug) if drive[1:2] == ":" else slug
@@ -470,6 +471,10 @@ class CursorMoreNames(StoreBase):
                                               "31b9daf5-2909-4516-bc62-a6659f87230a"),
                          "openchamber")
         self.assertEqual(cursor.project_label("zz-nowhere-Some-Project"), "zz-nowhere-Some-Project")
+        # an unwalkable path keeps the last ordinary run whole
+        self.assertEqual(cursor.project_label("zz-nowhere-RUNNER-1-AppData-Local-Temp-tmpab-RAG-installer"),
+                         "tmpab-RAG-installer")
+        self.assertEqual(cursor.project_label("zz-gone-Temp-11112222-3333-4444-5555-666677778888"), "temp folder")
         with mock.patch.object(cursor, "_resolve_slug",
                                return_value=[".config", "openchamber", "chats", "2026-11-02",
                                              "session-31b9daf5-2909-4516-bc62-a6659f87230a"]):

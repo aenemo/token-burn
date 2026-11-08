@@ -218,15 +218,24 @@ def _resolve_slug(slug, cache):
         except OSError:
             pass
         if best is None:
-            # folder gone: keep the rest whole, unless it holds ids, dates or generic names, which
-            # project_label must be able to skip one part at a time
+            # Folder gone (or not walkable): ids, dates and generic names become separate parts that
+            # project_label can skip.
+            # The last run of ordinary parts stays joined ("RAG-installer", not "installer").
             rest = "-".join(parts[i:])
             toks = [t for t in _UUID_RE.sub("-", rest).split("-") if t]
-            if _UUID_RE.search(rest) or any(_DATE_RE.match(t) or t.lower() in _GENERIC_DIRS | _TEMP_DIRS
-                                            for t in toks):
-                names.extend(toks)
-            else:
-                names.append(rest)
+
+            def skip(t):
+                return bool(_DATE_RE.match(t)) or t.lower() in _GENERIC_DIRS | _TEMP_DIRS
+            j = len(toks)
+            while j > 0 and skip(toks[j - 1]):
+                j -= 1
+            k = j
+            while k > 0 and not skip(toks[k - 1]):
+                k -= 1
+            names.extend(toks[:k])
+            if k < j:
+                names.append("-".join(toks[k:j]))
+            names.extend(toks[j:])
             break
         cur, i = best[0], i + best[1]
         names.append(cur.name)
