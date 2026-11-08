@@ -19,7 +19,7 @@ from pathlib import Path
 from collector import safe_storage
 from collector.effort import split_cursor_model
 from collector.schema import SubagentRun, UsageRecord
-from collector.util import CURSOR_HOOK_LOG, cursor_state_db
+from collector.util import CURSOR_HOOK_LOG, cursor_state_db, opencode_db
 
 PLATFORM = "cursor"
 PAGE_SIZE = 100
@@ -292,9 +292,81 @@ def project_labels(ids, projects_dir=None):
     return out
 
 
-def refresh_titles(store, now_s, db_path=None, search_db=None, projects_dir=None):
+_CHAT_UUID_RE = re.compile(r"-session-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$", re.I)
+
+
+def opencode_titles(ids, projects_dir=None, oc_db=None):
+    """{session id: opencode session title} for agent runs started in an OpenChamber chat folder.
+
+    The Cursor project folder is named after the chat folder (...-chats-<date>-session-<uuid>), and
+    opencode keeps that folder in session_v2.directory. The title is the top-level session's title
+    (child sessions use their parent's). Read-only; titles only, never message text."""
+    want = {}
+    for i in ids:
+        if isinstance(i, str) and i:
+            want[i] = i
+            want.setdefault(i[6:] if i.startswith("agent-") else "agent-" + i, i)
+    root = Path(projects_dir) if projects_dir else cursor_projects_dir()
+    chats = {}
+    try:
+        projects = [d for d in root.iterdir() if d.is_dir()]
+    except OSError:
+        return {}
+    for proj in projects:
+        m = _CHAT_UUID_RE.search(proj.name)
+        if not m:
+            continue
+        try:
+            entries = list((proj / "agent-transcripts").iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            sid = want.get(e.name[:-6] if e.name.endswith(".jsonl") else e.name)
+            if sid:
+                chats[sid] = m.group(1).lower()
+    if not chats:
+        return {}
+    path = Path(oc_db) if oc_db else opencode_db()
+    if not path.exists():
+        return {}
+    try:
+        con = sqlite3.connect("file:%s?mode=ro" % path.as_posix(), uri=True)
+    except sqlite3.Error:
+        return {}
+    out = {}
+    try:
+        sessions = {r[0]: r for r in con.execute(
+            "SELECT id, parent_id, directory, title, time_updated FROM session_v2")}
+    except sqlite3.Error:
+        return {}
+    finally:
+        con.close()
+
+    def top(row):
+        for _ in range(20):
+            parent = sessions.get(row[1]) if row[1] else None
+            if not parent:
+                break
+            row = parent
+        return row
+    by_uuid = {}
+    for row in sessions.values():
+        d = str(row[2] or "").replace("\\", "/").lower()
+        m = re.search(r"/session-([0-9a-f-]{36})(/|$)", d)
+        if m:
+            by_uuid.setdefault(m.group(1), []).append(top(row))
+    for sid, u in chats.items():
+        titled = [r for r in by_uuid.get(u, []) if isinstance(r[3], str) and r[3].strip()]
+        if titled:
+            best = max(titled, key=lambda r: r[4] or 0)
+            if _real_name(best[3]) and not re.match(r"new session - \d{4}-", best[3].strip(), re.I):
+                out[sid] = best[3].strip()
+    return out
+
+
+def refresh_titles(store, now_s, db_path=None, search_db=None, projects_dir=None, oc_db=None):
     """Look up names for stored conversations without a real title, each at most once a day: the chat
-    name, then the conversation-search title, then (agent runs) a project label kept on this computer."""
+    name, then the conversation-search title, then (OpenChamber agent runs) the opencode session title, then a project label, the last two kept on this computer."""
     checked = store.kv_get(TITLE_CHECK_KEY) or {}
     if not isinstance(checked, dict):
         checked = {}
@@ -310,6 +382,10 @@ def refresh_titles(store, now_s, db_path=None, search_db=None, projects_dir=None
         for cid, name in named.items():
             store.upsert_session_title(PLATFORM, cid, name, "chat", now_s)
         rest = [i for i in rest if i not in found]
+        oc = opencode_titles(rest, projects_dir, oc_db)
+        for cid, name in oc.items():
+            store.upsert_session_title(PLATFORM, cid, name, "project", now_s)
+        rest = [i for i in rest if i not in oc]
         for cid, label in project_labels(rest, projects_dir).items():
             store.upsert_session_title(PLATFORM, cid, label, "project", now_s)
         for cid in due:

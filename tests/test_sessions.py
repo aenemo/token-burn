@@ -482,6 +482,47 @@ class CursorMoreNames(StoreBase):
         with mock.patch.object(cursor, "_resolve_slug", return_value=["Users", Path.home().name]):
             self.assertEqual(cursor.project_label("x"), "home folder")
 
+    CHAT = "31b9daf5-2909-4516-bc62-a6659f87230a"
+
+    def chat_projects(self):
+        root = self.tmp / "cprojects"
+        slug = "C-Users-x-config-openchamber-chats-2026-11-02-session-" + self.CHAT
+        (root / slug / "agent-transcripts" / "agent-99999999-2222-3333-4444-555555555555").mkdir(parents=True)
+        (root / slug / "agent-transcripts" / "88888888-2222-3333-4444-555555555555.jsonl").write_text("{}\n")
+        return root
+
+    def oc_db(self, rows, name="opencode.db"):
+        path = self.tmp / name
+        con = sqlite3.connect(str(path))
+        con.execute("CREATE TABLE session_v2(id TEXT, parent_id TEXT, directory TEXT, title TEXT, time_updated INTEGER)")
+        con.executemany("INSERT INTO session_v2 VALUES(?,?,?,?,?)", rows)
+        con.commit()
+        con.close()
+        return path
+
+    def test_opencode_titles_by_chat_folder(self):
+        root = self.chat_projects()
+        d = r"C:\Users\x\.config\openchamber\chats\2026-11-02\session-" + self.CHAT
+        db = self.oc_db([("ses_a", None, d, "Fix the build", 5), ("ses_b", "ses_a", d, "Child task", 9),
+                         ("ses_c", None, "C:/other", "Elsewhere", 9)])
+        ids = ["agent-99999999-2222-3333-4444-555555555555", "88888888-2222-3333-4444-555555555555", "agent-zz"]
+        got = cursor.opencode_titles(ids, root, db)
+        self.assertEqual(got, {ids[0]: "Fix the build", ids[1]: "Fix the build"})
+        self.assertEqual(cursor.opencode_titles(ids, root, self.tmp / "absent.db"), {})
+        blank = self.oc_db([("ses_a", None, d, "New session - 2026-11-02T01:02:03", 5)], "blank.db")
+        self.assertEqual(cursor.opencode_titles(ids, root, blank), {})
+
+    def test_refresh_uses_opencode_title_kept_local(self):
+        root = self.chat_projects()
+        sid = "agent-99999999-2222-3333-4444-555555555555"
+        d = "C:/Users/x/.config/openchamber/chats/2026-11-02/session-" + self.CHAT
+        db = self.oc_db([("ses_a", None, d, "Fix the build", 5)])
+        self.store.add_usage(rec(10, platform="cursor", sess=sid))
+        st = self.tmp / "state.vscdb"
+        fake_vscdb(st, {})
+        cursor.refresh_titles(self.store, NOW, st, self.search_db([]), root, db)
+        self.assertEqual(self.store.session_title_sources("cursor"), {sid: ("Fix the build", "project")})
+
     def test_refresh_prefers_real_names_and_rechecks_labels(self):
         root = self.projects()
         sid = "agent-11111111-2222-3333-4444-555555555555"
