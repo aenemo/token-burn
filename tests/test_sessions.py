@@ -415,3 +415,104 @@ class SessionStatsJs(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+# ---- Cursor: conversation search, placeholders and project labels (0.4.1)
+
+class CursorMoreNames(StoreBase):
+    def search_db(self, rows):
+        path = self.tmp / "conversation-search.db"
+        con = sqlite3.connect(str(path))
+        con.execute("CREATE TABLE conversations(fts_rowid INTEGER PRIMARY KEY, source TEXT, scope TEXT, id TEXT,"
+                    " title TEXT, branches TEXT)")
+        for cid, title in rows:
+            con.execute("INSERT INTO conversations(source, scope, id, title, branches) VALUES('local','x',?,?,'')",
+                        (cid, title))
+        con.commit()
+        con.close()
+        return path
+
+    def projects(self):
+        root = self.tmp / "projects"
+        work = self.tmp / "disk" / "My Work" / "RAG installer"
+        work.mkdir(parents=True)
+        slug = "-".join(cursor._slug(x) for x in work.parts[1:] if x)
+        drive = work.parts[0]
+        slug = (drive[0] + "-" + slug) if drive[1:2] == ":" else slug
+        t = root / slug / "agent-transcripts"
+        (t / "agent-11111111-2222-3333-4444-555555555555").mkdir(parents=True)
+        (t / "66666666-7777-8888-9999-000000000000.jsonl").write_text("{}\n")
+        (root / "gone-folder-Temp-11112222-3333-4444-5555-666677778888" / "agent-transcripts"
+         / "agent-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee").mkdir(parents=True)
+        return root
+
+    def test_search_titles_and_placeholders(self):
+        path = self.search_db([("bc-1", "Cloud task"), ("c2", "New Agent"), ("c3", "")])
+        self.assertEqual(cursor.search_titles(["bc-1", "c2", "c3", "nope"], path), {"bc-1": "Cloud task"})
+        self.assertEqual(cursor.search_titles(["bc-1"], self.tmp / "absent.db"), {})
+        db = self.tmp / "state.vscdb"
+        fake_vscdb(db, {"c1": json.dumps({"name": "New Agent", "subtitle": "Edited x"})})
+        self.assertEqual(cursor.chat_names(["c1"], db), {"c1": "Edited x"})
+
+    def test_project_labels_resolve_real_folder_names(self):
+        root = self.projects()
+        got = cursor.project_labels(["agent-11111111-2222-3333-4444-555555555555",
+                                     "66666666-7777-8888-9999-000000000000",
+                                     "agent-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", "agent-unknown"], root)
+        self.assertEqual(got["agent-11111111-2222-3333-4444-555555555555"], "Agent 111111 · RAG installer")
+        self.assertEqual(got["66666666-7777-8888-9999-000000000000"], "Agent 666666 · RAG installer")
+        self.assertEqual(got["agent-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"], "Agent aaaaaa · temp folder")
+        self.assertNotIn("agent-unknown", got)
+        self.assertEqual(cursor.project_labels(["x"], self.tmp / "missing"), {})
+
+    def test_label_rules(self):
+        self.assertEqual(cursor.project_label("zz-nowhere-config-openchamber-chats-2026-11-02-session-"
+                                              "31b9daf5-2909-4516-bc62-a6659f87230a"),
+                         "openchamber")
+        self.assertEqual(cursor.project_label("zz-nowhere-Some-Project"), "zz-nowhere-Some-Project")
+        with mock.patch.object(cursor, "_resolve_slug",
+                               return_value=[".config", "openchamber", "chats", "2026-11-02",
+                                             "session-31b9daf5-2909-4516-bc62-a6659f87230a"]):
+            self.assertEqual(cursor.project_label("x"), "openchamber")
+        with mock.patch.object(cursor, "_resolve_slug", return_value=["Users", Path.home().name]):
+            self.assertEqual(cursor.project_label("x"), "home folder")
+
+    def test_refresh_prefers_real_names_and_rechecks_labels(self):
+        root = self.projects()
+        sid = "agent-11111111-2222-3333-4444-555555555555"
+        self.store.add_usage(rec(10, platform="cursor", sess=sid))
+        self.store.add_usage(rec(11, platform="cursor", sess="bc-1"))
+        db, search = self.tmp / "state.vscdb", self.search_db([("bc-1", "Cloud task")])
+        fake_vscdb(db, {})
+        cursor.refresh_titles(self.store, NOW, db, search, root)
+        self.assertEqual(self.store.session_title_sources("cursor"),
+                         {sid: ("Agent 111111 · RAG installer", "project"), "bc-1": ("Cloud task", "chat")})
+        p = build_platform_payload(self.store, "cursor", NOW, INFO)
+        flags = {s["id"]: s.get("title_local", False) for s in p["sessions"]}
+        self.assertEqual(flags, {sid: True, "bc-1": False})
+        # a project label is retried daily, and a real name replaces it
+        db.unlink()
+        fake_vscdb(db, {sid: json.dumps({"name": "Real chat"})})
+        self.assertEqual(cursor.refresh_titles(self.store, NOW + 60, db, search, root), 0)
+        self.assertEqual(cursor.refresh_titles(self.store, NOW + 86400, db, search, root), 1)
+        self.assertEqual(self.store.session_titles("cursor")[sid], "Real chat")
+
+
+class LocalLabelsStayLocal(SessionsSync):
+    def test_project_label_not_exported_and_peer_title_wins(self):
+        sid = "conv1"
+        self.store.add_usage(rec(10, platform="cursor", sess=sid, inp=70))
+        self.store.upsert_session_title("cursor", sid, "Agent conv1 · secret-folder", "project")
+        doc = export.build_export(self.payloads(), {}, self.cfg(ID_A), NOW, app_version="t")
+        self.assertNotIn("secret-folder", json.dumps(doc))
+        self.assertIsNone(doc["platforms"]["cursor"]["sessions"][0]["title"])
+        local = build_platform_payload(self.store, "cursor", NOW, INFO)
+
+        def fill(st):
+            st.add_usage(rec(10, platform="cursor", sess=sid, inp=70))
+            st.upsert_session_title("cursor", sid, "Named elsewhere", "chat")
+        pb = self.peer(ID_B, FP_B, lambda st: None, fill)
+        out = merge.merge_platform("cursor", local, [pb], NOW, ID_A, self_fp=FP_A)
+        self.assertEqual(out["sessions"][0]["title"], "Named elsewhere")
+        solo = merge.merge_platform("cursor", local, [], NOW, ID_A, self_fp=FP_A)
+        self.assertEqual(solo["sessions"][0]["title"], "Agent conv1 · secret-folder")

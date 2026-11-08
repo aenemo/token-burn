@@ -7,7 +7,10 @@ from Cursor's own state.vscdb (read-only) and is never logged or written.
 
 import base64
 import json
+import os
+import re
 import sqlite3
+import sys
 import urllib.error
 import urllib.request
 from datetime import datetime
@@ -29,6 +32,8 @@ LAST_TS_KEY = "cursor:last_ts"
 META_KEY = "cursor:meta"
 TITLE_CHECK_KEY = "cursor:title_checked"
 TITLE_RECHECK_S = 86400
+# Cursor's default names for a chat nobody named; never used as a title.
+PLACEHOLDER_NAMES = {"new agent", "new chat", "new composer", "untitled", "untitled chat"}
 AUTO_COST = "Auto Cost"
 
 EVENT_URLS = (
@@ -128,7 +133,7 @@ def chat_names(ids, db_path=None):
                 continue
             for field in ("name", "subtitle"):
                 v = data.get(field)
-                if isinstance(v, str) and v.strip():
+                if _real_name(v):
                     out[cid] = v
                     break
     finally:
@@ -136,18 +141,168 @@ def chat_names(ids, db_path=None):
     return out
 
 
-def refresh_titles(store, now_s, db_path=None):
-    """Look up chat names for stored conversations without a title, each at most once a day."""
+def _real_name(v):
+    return isinstance(v, str) and bool(v.strip()) and v.strip().lower() not in PLACEHOLDER_NAMES
+
+
+def search_titles(ids, db_path=None):
+    """{conversation id: title} from Cursor's conversation-search.db (read-only). It also lists cloud
+    agents (bc- ids) that have no composerData entry. Never raises."""
+    out = {}
+    ids = [i for i in ids if isinstance(i, str) and i]
+    if not ids:
+        return out
+    try:
+        path = Path(db_path) if db_path else Path(cursor_state_db()).parent / "conversation-search.db"
+        if not path.is_file():
+            return out
+        con = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+    except (sqlite3.Error, OSError, ValueError):
+        return out
+    try:
+        for cid in ids:
+            try:
+                row = con.execute("SELECT title FROM conversations WHERE id = ? AND title <> '' LIMIT 1",
+                                  (cid,)).fetchone()
+            except sqlite3.Error:
+                break
+            if row and _real_name(row[0]):
+                out[cid] = row[0]
+    finally:
+        con.close()
+    return out
+
+
+# ---- project labels for headless agent runs (agent-<uuid>): no title exists anywhere, but each run's
+# transcript sits in ~/.cursor/projects/<workspace path with separators as dashes>/agent-transcripts/.
+
+_UUID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I)
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$|^\d+$")
+_GENERIC_DIRS = {"chats", "chat", "sessions", "session", "local", "roaming", "appdata", "users", "home",
+                 "config", ".config", "projects", "workspace", "workspaces"}
+_TEMP_DIRS = {"temp", "tmp"}
+
+
+def cursor_projects_dir():
+    env = os.environ.get("CURSOR_PROJECTS_DIR")
+    return Path(env) if env else Path.home() / ".cursor" / "projects"
+
+
+def _slug(name):
+    return re.sub(r"[^A-Za-z0-9]+", "-", name).strip("-").lower()
+
+
+def _resolve_slug(slug, cache):
+    """Folder names of the workspace a ~/.cursor/projects slug was made from, walking the real disk so
+    spaces and dots come back; unresolved trailing parts are kept as one dash-joined name."""
+    if slug in cache:
+        return cache[slug]
+    parts = [x for x in slug.split("-") if x]
+    names, i = [], 0
+    if sys.platform.startswith("win") and parts and len(parts[0]) == 1 and parts[0].isalpha():
+        cur, i = Path(parts[0].upper() + ":\\"), 1
+    else:
+        cur = Path("/")
+    low = [x.lower() for x in parts]
+    while i < len(parts):
+        best = None
+        try:
+            for child in cur.iterdir():
+                n = _slug(child.name).split("-") if _slug(child.name) else []
+                if n and low[i:i + len(n)] == n and (best is None or len(n) > best[1]):
+                    try:
+                        if child.is_dir():
+                            best = (child, len(n))
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        if best is None:
+            # folder gone: keep the rest whole, unless it holds ids, dates or generic names, which
+            # project_label must be able to skip one part at a time
+            rest = "-".join(parts[i:])
+            toks = [t for t in _UUID_RE.sub("-", rest).split("-") if t]
+            if _UUID_RE.search(rest) or any(_DATE_RE.match(t) or t.lower() in _GENERIC_DIRS | _TEMP_DIRS
+                                            for t in toks):
+                names.extend(toks)
+            else:
+                names.append(rest)
+            break
+        cur, i = best[0], i + best[1]
+        names.append(cur.name)
+    cache[slug] = names
+    return names
+
+
+def project_label(slug, cache=None):
+    """Short project name for a ~/.cursor/projects folder, or None. Skips ids, dates and generic
+    folders (so an OpenChamber chat folder reads "openchamber"); a temp folder reads "temp folder"."""
+    names = _resolve_slug(slug, {} if cache is None else cache)
+    home = Path.home().name.lower()
+    for name in reversed(names):
+        low = name.lower()
+        if low in _TEMP_DIRS:
+            return "temp folder"
+        if _UUID_RE.search(name) or _DATE_RE.match(name) or low in _GENERIC_DIRS:
+            continue
+        if low == home:
+            return "home folder"
+        return name
+    return None
+
+
+def project_labels(ids, projects_dir=None):
+    """{session id: "Agent <6 hex> · <project>"} for agent runs whose transcript folder is found."""
+    want = {}
+    for i in ids:
+        if isinstance(i, str) and i:
+            want[i] = i
+            want.setdefault(i[6:] if i.startswith("agent-") else "agent-" + i, i)
+    out = {}
+    root = Path(projects_dir) if projects_dir else cursor_projects_dir()
+    try:
+        projects = [d for d in root.iterdir() if d.is_dir()]
+    except OSError:
+        return out
+    cache = {}
+    for proj in projects:
+        tdir = proj / "agent-transcripts"
+        try:
+            entries = list(tdir.iterdir())
+        except OSError:
+            continue
+        for e in entries:
+            stem = e.name[:-6] if e.name.endswith(".jsonl") else e.name
+            sid = want.get(stem)
+            if not sid or sid in out:
+                continue
+            label = project_label(proj.name, cache)
+            if label:
+                short = (sid[6:] if sid.startswith("agent-") else sid)[:6]
+                out[sid] = "Agent %s \u00b7 %s" % (short, label)
+    return out
+
+
+def refresh_titles(store, now_s, db_path=None, search_db=None, projects_dir=None):
+    """Look up names for stored conversations without a real title, each at most once a day: the chat
+    name, then the conversation-search title, then (agent runs) a project label kept on this computer."""
     checked = store.kv_get(TITLE_CHECK_KEY) or {}
     if not isinstance(checked, dict):
         checked = {}
-    have = store.session_titles(PLATFORM)
+    have = store.session_title_sources(PLATFORM)
     stored = set(store.session_ids(PLATFORM))
-    due = [i for i in stored if i not in have
+    due = [i for i in stored if (i not in have or have[i][1] in store.LOCAL_TITLE_SOURCES)
            and now_s - float(checked.get(i) or 0) >= TITLE_RECHECK_S]
     if due:
-        for cid, name in chat_names(due, db_path).items():
+        named = chat_names(due, db_path)
+        rest = [i for i in due if i not in named]
+        found = search_titles(rest, search_db)
+        named.update(found)
+        for cid, name in named.items():
             store.upsert_session_title(PLATFORM, cid, name, "chat", now_s)
+        rest = [i for i in rest if i not in found]
+        for cid, label in project_labels(rest, projects_dir).items():
+            store.upsert_session_title(PLATFORM, cid, label, "project", now_s)
         for cid in due:
             checked[cid] = now_s
     checked = {k: v for k, v in checked.items() if k in stored}

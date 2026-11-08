@@ -136,7 +136,8 @@ def build_sessions(store, platform, start_min, allocated):
     for r in store.subagent_runs(platform, start_min * 60):
         if r["session_id"] and r["session_id"] != r["agent_id"]:
             parent_of[r["agent_id"]] = r["session_id"]
-    titles = store.session_titles(platform)
+    titles = store.session_title_sources(platform)
+    local_sources = getattr(store, "LOCAL_TITLE_SOURCES", ())
     by_sess = {}
     for r, cost, _ in allocated:
         sid = r["session_id"] or ""
@@ -166,7 +167,11 @@ def build_sessions(store, platform, start_min, allocated):
             series.append({"key": key, "model": s["model"], "effort": s["effort"], "t": idxs,
                            "input": [c[0] for c in cells], "output": [c[1] for c in cells],
                            "cache": [c[2] for c in cells], "cost": [round(c[3], 6) for c in cells]})
-        out.append({"id": sid, "title": titles.get(sid) or None, "series": series})
+        title, source = titles.get(sid) or (None, None)
+        ent = {"id": sid, "title": title or None, "series": series}
+        if title and source in local_sources:
+            ent["title_local"] = True     # this computer only: not exported to sync files
+        out.append(ent)
     return out
 
 

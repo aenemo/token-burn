@@ -82,7 +82,7 @@
       '<section class="card"><h3>Sessions</h3>' +
         '<div class="sessions-box"><canvas class="sessions-canvas" role="img"></canvas></div>' +
         '<div class="sessions-empty empty" hidden>No sessions with usage in this window.</div>' +
-        '<div class="notes sessions-notes"></div><div class="sessions-table"></div></section>' +
+        '<div class="notes sessions-notes"></div></section>' +
       '<section class="card"><h3>Plan usage</h3><div class="plan-banner"></div>' +
         '<div class="chart-box plan-box"><canvas class="plan-canvas" role="img"></canvas></div>' +
         '<div class="plan-table"></div><div class="plan-lookup note"></div></section>' +
@@ -91,6 +91,7 @@
         '<h4 class="forecast-head">Limit forecast</h4><div class="forecast-out"></div></section>' +
       '<section class="card"><h3>Statistics</h3><div class="stats-table"></div></section>' +
       '<section class="card"><h3>Primary agent</h3><div class="prim-table"></div></section>' +
+      '<section class="card"><h3>All sessions</h3><div class="sessions-table"></div></section>' +
       '<section class="card"><h3>Subagents</h3><div class="notes sub-notes"></div><div class="sub-table"></div></section>';
     root.querySelector('h2').textContent = P.name;
     root.querySelector('.use-canvas').setAttribute('aria-label', P.name + ' cumulative usage chart');
@@ -635,8 +636,8 @@
     }
     this.sessTable.update(rows);
     var notes = [];
-    if (rows.length > C.SESSION_TOP) notes.push('The chart shows the top ' + C.SESSION_TOP + ' sessions; the rest are combined under Other. The table lists them all.');
-    if (P.id === 'cursor') notes.push('Cursor chat names come from this computer’s Cursor app; other conversations show a short ID.');
+    if (rows.length > C.SESSION_TOP) notes.push('The chart shows the top ' + C.SESSION_TOP + ' sessions; the rest are combined under Other. The All sessions table lists them all.');
+    if (P.id === 'cursor') notes.push('Cursor chat names come from this computer’s Cursor app. Agent runs started by other tools are named after their project folder (shown on this computer only); other conversations show a short ID.');
     if (!Array.isArray(plat.sessions)) notes.push('Session data appears after the next collection.');
     addNotes(this.q('.sessions-notes'), notes);
   };

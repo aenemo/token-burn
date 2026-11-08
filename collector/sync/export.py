@@ -161,7 +161,7 @@ def _payload_sessions(payload, now_min, salt):
         if not isinstance(ses, dict) or not isinstance(ses.get("series"), list):
             continue
         sid = validate.session_hash(salt, str(ses.get("id") or ""))
-        title = ses.get("title")
+        title = None if ses.get("title_local") else ses.get("title")
         title = validate.strip_control(title, validate.TITLE_MAX) if isinstance(title, str) else ""
         ent = out.setdefault(sid, {"title": title or None, "series": {}})
         for s in ses["series"]:

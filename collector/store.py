@@ -160,7 +160,9 @@ class Store:
 
     # ---- session titles
     # Title sources, weakest first: a stronger source is never replaced by a weaker one, an equal one replaces.
-    TITLE_RANK = {"ai": 1, "chat": 1, "app": 1, "custom": 2}
+    TITLE_RANK = {"project": 0, "ai": 1, "chat": 1, "app": 1, "custom": 2}
+    # Labels built from local folder names: shown on this computer, never written to sync files.
+    LOCAL_TITLE_SOURCES = frozenset({"project"})
     TITLE_MAX = 120
 
     def upsert_session_title(self, platform, session_id, title, source, t=0.0):
@@ -187,6 +189,11 @@ class Store:
     def session_titles(self, platform):
         return {r["session_id"]: r["title"] for r in self.db.execute(
             "SELECT session_id, title FROM session_meta WHERE platform=?", (platform,))}
+
+    def session_title_sources(self, platform):
+        """{session_id: (title, source)}."""
+        return {r["session_id"]: (r["title"], r["source"]) for r in self.db.execute(
+            "SELECT session_id, title, source FROM session_meta WHERE platform=?", (platform,))}
 
     # ---- plan samples
     def add_plan_sample(self, platform, t, pools):

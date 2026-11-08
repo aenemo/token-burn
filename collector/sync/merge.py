@@ -144,7 +144,8 @@ def local_sessions(payload, start_min, salt):
             continue
         raw = str(ses.get("id") or "")
         ent = out.setdefault(validate.session_hash(salt, raw),
-                             {"id": raw, "title": ses.get("title") or None, "series": {}})
+                             {"id": raw, "title": ses.get("title") or None, "series": {},
+                              "title_local": bool(ses.get("title_local"))})
         for s in ses["series"]:
             if not isinstance(s, dict) or not isinstance(s.get("t"), list):
                 continue
@@ -176,19 +177,21 @@ def doc_sessions(plat_doc):
 def combine_sessions(maps):
     """Union of session maps. One id is one session (ids are unique per physical computer, and a
     Cursor conversation is the same on every computer), so repeated cells take the per-field max.
-    The first map's id and title win; a later title fills a missing one."""
+    The first map's id and title win; a later title fills a missing one, and a real title replaces a
+    label built from this computer's folder names."""
     out = {}
     for sm in maps:
         for mid, ent in sm.items():
             cur = out.get(mid)
             if cur is None:
                 out[mid] = {"id": ent["id"], "title": ent["title"],
+                            "title_local": bool(ent.get("title_local")),
                             "series": {k: {"model": v["model"], "effort": v["effort"],
                                            "cells": {m: list(c) for m, c in v["cells"].items()}}
                                        for k, v in ent["series"].items()}}
                 continue
-            if not cur["title"]:
-                cur["title"] = ent["title"]
+            if ent["title"] and (not cur["title"] or (cur.get("title_local") and not ent.get("title_local"))):
+                cur["title"], cur["title_local"] = ent["title"], bool(ent.get("title_local"))
             for key, se in ent["series"].items():
                 cs = cur["series"].setdefault(key, {"model": se["model"], "effort": se["effort"],
                                                     "cells": {}})

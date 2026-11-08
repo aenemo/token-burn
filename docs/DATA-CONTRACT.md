@@ -188,6 +188,10 @@ Titles come only from these sources, never from prompt text (Claude `last-prompt
 | Claude | `custom-title` entries (`customTitle`, set with `/rename`), the latest wins | `custom` |
 | opencode | `session_v2.title` of top-level sessions | `app` |
 | Cursor | `name` (else `subtitle`) of `composerData:<conversation id>` in this computer's `state.vscdb`, read-only; each untitled conversation is looked up at most once a day (kv `cursor:title_checked`) | `chat` |
+| Cursor | `title` in `conversation-search.db` (`conversations` table, next to `state.vscdb`), read-only; also names cloud agents (`bc-` ids) | `chat` |
+| Cursor | Project label "Agent <6 hex> · <project>" for runs whose transcript is in `~/.cursor/projects/<slug>/agent-transcripts/` (`CURSOR_PROJECTS_DIR` overrides). The slug is the workspace path with separators as dashes; it is resolved against the disk to get the real folder name, skipping ids, dates and generic folders. Local only: `title_local: true` in `usage.json`, never exported, rechecked daily and replaced by any real name | `project` |
+
+Cursor placeholder names ("New Agent", "New Chat", "Untitled") are never used. Ranks: `project` 0, `ai`/`chat`/`app` 1, `custom` 2; a higher rank is never replaced by a lower one.
 
 Claude transcripts already read by an older version are scanned once for title lines only (kv `claude:titles_v1`). Subagent transcripts are skipped.
 
@@ -439,7 +443,7 @@ Minutes are merged as absolute epoch minutes (a peer's `start` may differ); at t
 ```
 
 - `m` is absolute epoch minutes. Series are built from this computer's own payloads before merging, so merged data is never re-exported.
-- Never written: raw session ids, `meta`, file counts, paths, prompts, credentials. Session ids are `sha256("session:" + salt + ":" + id).hexdigest()[:16]`, where the salt is `host_fp` (else the machine id) for Claude and opencode and `cursor` for Cursor. Titles are only those listed under Session titles, capped at 120 characters with control characters removed. `agent_id` is `sha256(machine_id + ":" + original_id).hexdigest()[:16]` and `agent_name` is rebuilt as `<type or "subagent"> \· <hashed id[:7]>`. `status` is trimmed to 120 characters with control characters removed.
+- Never written: raw session ids, `meta`, file counts, paths, prompts, credentials. Session ids are `sha256("session:" + salt + ":" + id).hexdigest()[:16]`, where the salt is `host_fp` (else the machine id) for Claude and opencode and `cursor` for Cursor. Titles are only those listed under Session titles except `project` labels (exported as `null`), capped at 120 characters with control characters removed. `agent_id` is `sha256(machine_id + ":" + original_id).hexdigest()[:16]` and `agent_name` is rebuilt as `<type or "subagent"> \· <hashed id[:7]>`. `status` is trimmed to 120 characters with control characters removed.
 - Plan samples are raw `(t, pools)`, thinned to one per 5 minutes after 2 days; per pool only a finite `pct` and a `resets_at` string of at most 40 characters are kept.
 - `host_fp` (optional, 16 lowercase hex; ignored when invalid) identifies the physical computer: the first 16 hex of SHA-256 of `token-burn-host-fp-v1:` plus the OS machine id (Windows `MachineGuid` read-only from the registry, macOS `IOPlatformUUID` from `ioreg`, Linux `/etc/machine-id` or `/var/lib/dbus/machine-id`), or of the host name and OS when none is readable. The raw id is never exported. Older files have none.
 - A computer adopted after a reinstall merges `data_dir/adopted-<id>.json.gz` into its export by per-cell maximum; the file is deleted once all its minutes are older than 30 days.
