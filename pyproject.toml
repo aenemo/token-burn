@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "token-burn"
-version = "0.5.0"
+version = "0.6.0"
 description = "Token Burn: a local dashboard of token usage and costs for Claude Code, Cursor, opencode and OpenAI"
 readme = "README.md"
 requires-python = ">=3.9"

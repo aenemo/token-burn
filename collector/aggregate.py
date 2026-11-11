@@ -1,4 +1,5 @@
 """Build the per-platform payload and the full usage.json document."""
+from collector import openai_prices
 from collector.util import MINUTES, PLAN_INTERVAL_S, TOKEN_REFRESH_S, iso, parse_ts
 
 AUTO = "Auto Cost"
@@ -29,6 +30,20 @@ def allocate_costs(store, platform, rows):
     Cursor and opencode: the row's own cost.
     """
     stats = {"sessions_without_cost": 0, "sessions_estimated": 0, "estimated_cost_usd": 0.0}
+    if platform == "openai":
+        # a request that reported a real cost keeps it; the rest (subscription requests, which report none)
+        # are valued at OpenAI's API list prices. Models without a listed price stay at 0.
+        out = []
+        for r in rows:
+            cost = float(r["cost"] or 0.0)
+            est = False
+            if not cost:
+                listed = openai_prices.row_cost(r["model"], r["input"], r["output"], r["cache_read"],
+                                                r["cache_write"])
+                if listed is not None:
+                    cost, est = listed, True
+            out.append((r, cost, est))
+        return out, stats, {}
     if platform != "claude":
         return [(r, float(r["cost"] or 0.0), False) for r in rows], stats, {}
     totals = store.session_tokens(platform)
@@ -268,10 +283,17 @@ def build_platform_payload(store, platform, now, status_info):
         meta.setdefault("files", 0)
     else:
         meta["subagent_tokens_attributed"] = attributed
-        if platform in ("opencode", "openai"):
-            # some opencode models (and every ChatGPT plan request) record cost 0 while using tokens, so the
-            # frontend should not present $0 as fact
+        if platform == "opencode":
+            # some opencode models record cost 0 while using tokens, so the frontend should not present $0 as fact
             meta["cost_reported"] = not any(_tok(r) > 0 and not cost for r, cost, _ in allocated)
+        elif platform == "openai":
+            # subscription requests report no cost, so they are valued at API list prices (estimated). Models
+            # with no listed price stay at 0.
+            meta["cost_reported"] = not any(_tok(r) > 0 and not cost for r, cost, _ in allocated)
+            meta["cost_estimated"] = any(est for _, _, est in allocated)
+            meta["cost_api_list"] = True
+            meta["models_unpriced"] = sorted({r["model"] for r, cost, est in allocated
+                                              if _tok(r) > 0 and not cost})
 
     return {"status": status_info.get("status", "ok"),
             "start": iso(start_min * 60), "minutes": MINUTES,

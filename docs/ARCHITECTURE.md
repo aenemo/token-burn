@@ -139,6 +139,7 @@ Done in `aggregate.allocate_costs`.
   2. If not (a session still running), the row is estimated at `sum(cost) / sum(tokens)` for that model across costed sessions, and flagged as estimated. The totals are in `meta.sessions_estimated` and `meta.estimated_cost_usd`.
   3. If there is no rate either, cost is 0 and the session is counted in `meta.sessions_without_cost`.
 - **opencode.** The row's own cost, which is 0 for free or gateway models (`meta.cost_reported` is false if any row with tokens recorded no cost).
+- **OpenAI.** A row's own cost if it has one, otherwise the tokens valued at OpenAI's published API list prices (`collector/openai_prices.py`). API cost only: a ChatGPT or Codex subscription is a flat fee, so this is a value comparison, not a bill. Update the price table when OpenAI changes its prices.
 - **Claude subagent cost.** A subagent's cost is its share of the session cost by tokens, so it is the session cost share, not a separate figure from Claude. When only the hook totals exist (transcript gone), it is estimated at the model rate.
 
 ## Plan throttle

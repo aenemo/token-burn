@@ -100,7 +100,20 @@ class CodexAdapterTests(CodexBase):
         self.assertEqual(sum(r["cost"] for r in rows), 0)
         self.assertEqual(self.store.session_titles("openai"), {"t1": "A named chat"})
         p2 = build_platform_payload(self.store, "openai", NOW, {"status": "ok"})
+        # the stored cost stays 0; the payload values the tokens at OpenAI API list prices (gpt-6.1-terra)
+        self.assertIs(p2["meta"]["cost_reported"], True)
+        self.assertIs(p2["meta"]["cost_estimated"], True)
+        self.assertEqual(p2["meta"]["models_unpriced"], [])
+        want = (21264 * 1.0 + 41728 * 0.05 + 140 * 5.0) / 1e6
+        self.assertAlmostEqual(sum(sum(s["cost"]) for s in p2["series"]), want, places=5)
+
+    def test_unlisted_model_stays_zero_and_is_named(self):
+        p = self.rollout("r1.jsonl", text_line(), context_line("mystery-model"), token_line(1, 60, 10, 0, 5, 15))
+        self.state([self.thread("t1", p)])
+        self.run_collect()
+        p2 = build_platform_payload(self.store, "openai", NOW, {"status": "ok"})
         self.assertIs(p2["meta"]["cost_reported"], False)
+        self.assertEqual(p2["meta"]["models_unpriced"], ["mystery-model"])
 
     def test_prompt_text_is_never_stored(self):
         p = self.rollout("r1.jsonl", text_line(), context_line(), token_line(1, 60, 10, 0, 5, 15))
