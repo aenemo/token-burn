@@ -50,7 +50,7 @@ class FrontendContract(unittest.TestCase):
         self.assertLess(html.index("providers/opencode.js"), html.index("js/app.js"))
         self.assertIn("<title>Token Burn {{VERSION}}</title>", html)
         self.assertIn('<h1>Token Burn <span class="ver">{{VERSION}}</span></h1>', html)
-        self.assertIn("Claude Code, Cursor or opencode", html)
+        self.assertIn("Claude Code, Cursor, opencode or OpenAI", html)
         self.assertIn("Turn on a provider above to see its usage.", html)
         oc = read("js/providers/opencode.js")
         self.assertRegex(oc, r"id:\s*'opencode'")

@@ -1,12 +1,12 @@
 # Install
 
-Supported: Windows 10 or later, macOS 12 or later, and Linux with systemd (cron is used where systemd user units are unavailable). Claude Code, Cursor and opencode need to be used on the same machine for their data to appear.
+Supported: Windows 10 or later, macOS 12 or later, and Linux with systemd (cron is used where systemd user units are unavailable). Claude Code, Cursor, opencode and the OpenAI Codex app need to be used on the same machine for their data to appear.
 
 ## Route 1: PyInstaller zip (no Python needed)
 
 1. Download `token-burn-<version>-<OS>.zip` and `SHA256SUMS` from the GitHub Release. Verify the checksum.
-   - Windows: `certutil -hashfile token-burn-v0.4.3-Windows.zip SHA256`
-   - macOS: `shasum -a 256 token-burn-v0.4.3-macOS.zip`
+   - Windows: `certutil -hashfile token-burn-v0.5.0-Windows.zip SHA256`
+   - macOS: `shasum -a 256 token-burn-v0.5.0-macOS.zip`
    - Linux: `sha256sum -c SHA256SUMS --ignore-missing`
 2. Unzip the whole folder anywhere (your Desktop or Documents is fine, but not straight from inside the zip viewer).
 3. Start the installer:

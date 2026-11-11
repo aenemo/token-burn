@@ -271,6 +271,12 @@ def opencode_db():
     return (Path(xdg) if xdg else Path.home() / ".local" / "share") / "opencode" / "opencode.db"
 
 
+def codex_home():
+    """Codex (the OpenAI Codex app and CLI) data folder; CODEX_HOME overrides, as it does for Codex."""
+    env = os.environ.get("CODEX_HOME")
+    return Path(env) if env else Path.home() / ".codex"
+
+
 def cursor_state_db():
     """Cursor's state.vscdb for this OS (CURSOR_STATE_DB overrides)."""
     env = os.environ.get("CURSOR_STATE_DB")

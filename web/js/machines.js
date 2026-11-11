@@ -2,8 +2,8 @@
  *
  * TokenBurn.machines.list(data)                    -> machines array ([] when absent)
  * TokenBurn.machines.selected(data, off)           -> ids to show; off = { id: false }; all off or unknown ids = all
- * TokenBurn.machines.filterData(data, selectedIds) -> data with Claude and opencode rebuilt from the chosen computers
- * TokenBurn.machines.tokensByMachine(data, fr)     -> { id: tokens in the window } (Claude and opencode only)
+ * TokenBurn.machines.filterData(data, selectedIds) -> data with Claude, opencode and OpenAI rebuilt from the chosen computers
+ * TokenBurn.machines.tokensByMachine(data, fr)     -> { id: tokens in the window } (Claude, opencode and OpenAI only)
  * Cursor usage is account-wide, so it is never filtered. Plans, meta and status are kept as they are.
  * When a platform has a `machines` key (always, once 2 or more computers are listed) it is authoritative:
  * a computer missing from it has no usage for that platform. Only sync data with no `machines` key at all
@@ -13,7 +13,7 @@
   'use strict';
   var TokenBurn = window.TokenBurn = window.TokenBurn || {};
 
-  var FILTERED = ['claude', 'opencode'];
+  var FILTERED = ['claude', 'opencode', 'openai'];
   var NUM_FIELDS = ['input', 'output', 'cache', 'cost', 'requests', 'sub_input', 'sub_output', 'sub_cache', 'sub_cost', 'cache_read', 'sub_cache_read'];
 
   function list(data) {

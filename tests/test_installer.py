@@ -62,7 +62,7 @@ class TestWizardFlows(InstallerCase):
         self.assertIn("3) Join an existing shared folder (I already set up another computer)", text)
         self.assertIn("Choose 1, 2 or 3 [1]:", text)
         self.assertIn("Install now? [Y/n]", text)
-        self.assertIn("Welcome to Token Burn. It shows your Claude Code, Cursor and opencode token usage "
+        self.assertIn("Welcome to Token Burn. It shows your Claude Code, Cursor, opencode and OpenAI token usage "
                       "on a private page at http://127.0.0.1:8421/. Nothing leaves this computer unless you "
                       "choose a shared folder in the next step.", con.text)
         self.assertIn("Sharing:        this computer only", con.text)

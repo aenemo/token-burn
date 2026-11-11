@@ -1,5 +1,5 @@
-/* App shell: header controls, refresh loop and the per-platform column (identical for Claude, Cursor and opencode).
- * Global API: window.TokenBurn = { fmt, stats, charts, tables, providers: { claude, cursor, opencode }, app }.
+/* App shell: header controls, refresh loop and the per-platform column (identical for Claude, Cursor, opencode and OpenAI).
+ * Global API: window.TokenBurn = { fmt, stats, charts, tables, providers: { claude, cursor, opencode, openai }, app }.
  */
 (function () {
   'use strict';
@@ -523,6 +523,21 @@
     plan.pools.forEach(function (p) {
       tiles.appendChild(tile(p.label, F.pct(p.current), 'plan pool', p.label + ' current usage'));
     });
+    // Plan type and credits, when the platform's plan lookup reports them (OpenAI, from Codex).
+    var pinfo = P.planInfo && plat.plan && plat.plan.info;
+    var planNote = '';
+    if (pinfo && typeof pinfo === 'object') {
+      var ptype = typeof pinfo.plan_type === 'string' && pinfo.plan_type ? pinfo.plan_type : null;
+      var cap = ptype ? ptype.charAt(0).toUpperCase() + ptype.slice(1) + ' plan' : 'plan';
+      if (typeof pinfo.balance === 'number') {
+        tiles.appendChild(tile('Credit balance', F.full(pinfo.balance), ptype ? cap : null, 'Credits left on the ChatGPT plan, as reported by Codex'));
+        planNote = 'Credit balance ' + F.full(pinfo.balance) + '.';
+      } else if (pinfo.unlimited) {
+        tiles.appendChild(tile('Credits', 'Unlimited', ptype ? cap : null, 'Codex reports unlimited credits on this plan'));
+        planNote = 'Credits are unlimited.';
+      }
+      if (ptype) planNote = cap.charAt(0).toUpperCase() + cap.slice(1) + '. ' + planNote;
+    }
 
     // selection must still exist
     var gRows = rows, split = this.canSplit && this.agents === 'split';
@@ -590,10 +605,12 @@
     // plan
     var banner = this.q('.plan-banner');
     banner.textContent = '';
-    // Providers without a plan quota (opencode) show a message instead of an empty chart and table.
+    // Providers without a plan quota (opencode, OpenAI) show a message instead of an empty chart and table.
     var noPlan = !!P.planUnavailable && !plan.pools.length;
     this.q('.plan-box').hidden = noPlan; this.q('.plan-table').hidden = noPlan; this.q('.plan-lookup').hidden = noPlan;
-    if (noPlan) banner.appendChild(el('div', 'empty', 'No plan data from ' + P.name + '. It has no usage limit to chart.'));
+    if (noPlan) banner.appendChild(el('div', 'empty', planNote
+      ? planNote.trim() + ' ' + P.name + ' reports no usage limit windows to chart.'
+      : 'No plan data from ' + P.name + '. It has no usage limit to chart.'));
     else if (plan.status && plan.status !== 'ok') banner.appendChild(el('div', 'banner warn', 'Plan usage status: ' + plan.status));
     var markers = [];
     if (P.resetMarkers) {
@@ -711,6 +728,7 @@
     var main = document.querySelector('main.cols');
     if (main) {
       main.style.setProperty('--n', String(Math.max(1, shown)));
+      main.classList.toggle('cols-4', shown >= 4);
       main.hidden = shown === 0;
     }
     return { shown: shown, avail: avail };
@@ -830,7 +848,7 @@
           { key: 'os', label: 'OS', v: function (r) { return r.os; }, text: function (r) { return r.os || 'n/a'; } },
           { key: 'seen', label: 'Last seen', v: function (r) { return r.seenMs; }, text: function (r) { return r.seenText; } },
           { key: 'tokens', label: 'Tokens in window', num: true, v: function (r) { return r.tokens; }, text: function (r) { return F.tokens(r.tokens); }, title: function (r) { return F.full(r.tokens) + ' tokens'; } },
-          { key: 'share', label: 'Share', num: true, headTitle: 'Claude and opencode only; Cursor is account-wide',
+          { key: 'share', label: 'Share', num: true, headTitle: 'Claude, opencode and OpenAI only; Cursor is account-wide',
             v: function (r) { return r.share; }, text: function (r) { return r.share == null ? 'n/a' : F.share(r.share); } },
           { key: 'status', label: 'Status', v: function (r) { return r.status.text; }, node: function (r) {
             return el('span', r.status.warn ? 'mstatus warn' : 'mstatus', r.status.text);
@@ -840,7 +858,7 @@
     }
     var nowMs = Date.parse(data.generated_at);
     if (isNaN(nowMs)) nowMs = Date.now();
-    var plat = (data.platforms && (data.platforms.claude || data.platforms.opencode)) || null;
+    var plat = (data.platforms && (data.platforms.claude || data.platforms.opencode || data.platforms.openai)) || null;
     var by = plat && plat.start ? M.tokensByMachine(data, S.frame(plat, state.win)) : {};
     var sum = 0;
     list.forEach(function (m) { sum += by[m.id] || 0; });
@@ -861,7 +879,7 @@
     if (!state.data) return;
     var plats = state.data.platforms || {};
     var shown = n.shown, avail = n.avail;
-    // Computer filter: Claude and opencode are rebuilt from the chosen computers; Cursor is account-wide.
+    // Computer filter: Claude, opencode and OpenAI are rebuilt from the chosen computers; Cursor is account-wide.
     var sel = M ? M.selected(state.data, mprefs) : [];
     var filtered = !!M && sel.length > 0 && sel.length < M.list(state.data).length;
     var view = M ? M.filterData(state.data, sel) : state.data;
@@ -955,7 +973,8 @@
     columns = [
       new Column(TokenBurn.providers.claude, $('col-claude')),
       new Column(TokenBurn.providers.cursor, $('col-cursor')),
-      new Column(TokenBurn.providers.opencode, $('col-opencode'))
+      new Column(TokenBurn.providers.opencode, $('col-opencode')),
+      new Column(TokenBurn.providers.openai, $('col-openai'))
     ];
     setInterval(function () {
       var s = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000));

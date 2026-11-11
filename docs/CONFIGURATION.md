@@ -20,6 +20,7 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 | `CURSOR_STATE_DB` | Path to Cursor's `state.vscdb` | Overrides the per-OS default location |
 | `CURSOR_PROJECTS_DIR` | Path to Cursor's `projects` folder | Overrides `~/.cursor/projects`, used to label Cursor agent runs with their project |
 | `TOKEN_BURN_OPENCODE_DB` | Path to opencode's `opencode.db` | Overrides the default location below |
+| `CODEX_HOME` | Codex data folder (OpenAI section) | Defaults to `~/.codex` |
 | `XDG_DATA_HOME` | Base folder for opencode's data | Honoured on every OS when `TOKEN_BURN_OPENCODE_DB` is not set |
 | `CLAUDE_CONFIG_DIR` | Claude's folder (projects, credentials, settings) instead of `~/.claude` | Same variable Claude Code uses. `token-burn install` honours it when registering the hook |
 
@@ -163,7 +164,7 @@ A window is anchored to the browser clock: `endIdx = floor((now - start) / 60000
 
 ## Usage graph modes
 
-Each platform column (Claude, Cursor and opencode) has its own graph mode switch. **Cumulative** is the default and draws running totals across the selected window. **Rolling total** draws, for each point in the window, the usage over the preceding period, one line per model and effort plus a bold Total line (not a selectable chip). The "Total over the last" picker offers 30 min, 1 hour, 6 hours, 12 hours, 24 hours (default), 7 days and 30 days, and is hidden in Cumulative mode. Switching mode or period redraws from the data already loaded, with no refetch. Clicking a model chip (or its chart line) highlights that series and shows a small callout over the chart with its usage for the selected main time period (tokens or US$ following the metric toggle), plus, in Rolling total mode, the latest rolling total. Clicking again clears it.
+Each platform column (Claude, Cursor, opencode and OpenAI) has its own graph mode switch. **Cumulative** is the default and draws running totals across the selected window. **Rolling total** draws, for each point in the window, the usage over the preceding period, one line per model and effort plus a bold Total line (not a selectable chip). The "Total over the last" picker offers 30 min, 1 hour, 6 hours, 12 hours, 24 hours (default), 7 days and 30 days, and is hidden in Cumulative mode. Switching mode or period redraws from the data already loaded, with no refetch. Clicking a model chip (or its chart line) highlights that series and shows a small callout over the chart with its usage for the selected main time period (tokens or US$ following the metric toggle), plus, in Rolling total mode, the latest rolling total. Clicking again clears it.
 
 History is limited to 30 days. When the window reaches back before the first stored data, the earliest points sum less than a full period, and a note under the chart gives the date and time history starts.
 

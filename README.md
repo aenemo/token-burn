@@ -1,8 +1,8 @@
 # Token Burn
 
-Version 0.4.3.
+Version 0.5.0.
 
-Token Burn (`token-burn`) collects token usage and costs for Claude, Cursor and Opencode and shows them on one local dashboard, side by side, in that order from the left. It runs on Windows, macOS and Linux, uses only the Python standard library at runtime, and keeps everything on your machine.
+Token Burn (`token-burn`) collects token usage and costs for Claude, Cursor, Opencode and OpenAI and shows them on one local dashboard, side by side, in that order from the left. It runs on Windows, macOS and Linux, uses only the Python standard library at runtime, and keeps everything on your machine.
 
 The default port is 8421; override with TOKEN_BURN_PORT or token-burn serve --port.
 

@@ -11,7 +11,7 @@ EXIT_HELP = """Exit codes: 0 ok, 1 error, 2 bad arguments, 3 refused (duplicate 
 
 
 def build_parser():
-    ap = argparse.ArgumentParser(prog="token-burn", description="Claude, Cursor and opencode token usage dashboard",
+    ap = argparse.ArgumentParser(prog="token-burn", description="Claude, Cursor, opencode and OpenAI token usage dashboard",
                                  epilog=EXIT_HELP, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd")
     p = sub.add_parser("install", help="install: choose folders, optionally share between computers, then register "

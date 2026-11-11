@@ -1,1 +1,1 @@
-"""Combined Claude, Cursor and opencode token usage collector."""
+"""Combined Claude, Cursor, opencode and OpenAI token usage collector."""

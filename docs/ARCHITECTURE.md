@@ -1,12 +1,12 @@
 # Architecture
 
-Final design of the combined Claude, Cursor and opencode token usage dashboard. The review that led to it is in `docs/ARCHITECTURE-REVIEW.md`. The exact module signatures, table definitions and JSON shape are in `docs/DATA-CONTRACT.md`, which is the authority; this page explains how the parts fit together and does not repeat it.
+Final design of the combined Claude, Cursor, opencode and OpenAI token usage dashboard. The review that led to it is in `docs/ARCHITECTURE-REVIEW.md`. The exact module signatures, table definitions and JSON shape are in `docs/DATA-CONTRACT.md`, which is the authority; this page explains how the parts fit together and does not repeat it.
 
 ## Overview
 
 - Python 3.9+ standard library only (including `sqlite3`), vanilla JavaScript, and Chart.js 4.4.1 vendored in `web/vendor/`. No build step, no pip packages.
 - One collector runs every minute, writes a single `data/usage.json`, and a small loopback-only server serves it with the static page.
-- Claude, Cursor and opencode are shown as columns from the left, each switchable on or off from the header and sharing the page width. All columns are produced by the same frontend code; only a small provider file (palette, labels, notes) differs.
+- Claude, Cursor, opencode and OpenAI are shown as columns from the left, each switchable on or off from the header and sharing the page width. All columns are produced by the same frontend code; only a small provider file (palette, labels, notes) differs.
 
 ## Components
 

@@ -29,7 +29,7 @@ The shared folder looks like this:
 
 Each computer's file holds only: token counts per minute, per model and effort (input, output, cache read and write, requests), costs, subagent run summaries (type, model, effort, status, token counts, cost), plan usage percentages with their reset times, and this computer's display name, host name, operating system and Token Burn version.
 
-It never holds: prompts, messages, code, conversation titles, session ids, file paths, credentials, tokens or anything from Claude, Cursor or opencode other than the usage numbers above. Subagent ids are hashed with the machine id before they are written.
+It never holds: prompts, messages, code, conversation titles, session ids, file paths, credentials, tokens or anything from Claude, Cursor, opencode or OpenAI other than the usage numbers above. Subagent ids are hashed with the machine id before they are written.
 
 Files from other computers are treated as untrusted data. They are size capped, type checked, clamped and never executed.
 

@@ -74,7 +74,7 @@ def opencode_db() -> Path                    # TOKEN_BURN_OPENCODE_DB, else $XDG
 ```python
 @dataclass
 class UsageRecord:
-    platform: str            # "claude" | "cursor" | "opencode"
+    platform: str            # "claude" | "cursor" | "opencode" | "openai"
     agent_kind: str          # "primary" | "subagent"
     agent_id: str            # "" for primary; Claude agent id, or Cursor subagent conversation id
     session_id: str          # Claude sessionId, or Cursor conversationId ("" if unknown)
@@ -187,6 +187,7 @@ Titles come only from these sources, never from prompt text (Claude `last-prompt
 | Claude | `ai-title` entries (`aiTitle`), the latest wins | `ai` |
 | Claude | `custom-title` entries (`customTitle`, set with `/rename`), the latest wins | `custom` |
 | opencode | `session_v2.title` of top-level sessions | `app` |
+| OpenAI | The Codex thread `name` field only (never `title`, `preview` or the first prompt), plus the opencode title for OpenAI requests made through opencode | `app` |
 | Cursor | `name` (else `subtitle`) of `composerData:<conversation id>` in this computer's `state.vscdb`, read-only; each untitled conversation is looked up at most once a day (kv `cursor:title_checked`) | `chat` |
 | Cursor | `title` in `conversation-search.db` (`conversations` table, next to `state.vscdb`), read-only; also names cloud agents (`bc-` ids) | `chat` |
 | Cursor | opencode session title for agent runs started in an OpenChamber chat folder. The project slug ends `-session-<uuid>`, and that uuid is found in `session_v2.directory` in the opencode database (read-only, `TOKEN_BURN_OPENCODE_DB` overrides). The top-level session's title is used (a child session uses its parent's); default "New session - <date>" titles are ignored. Local only like a project label, so `title_local: true`, never exported, rechecked daily and replaced by any real name | `project` |
@@ -276,6 +277,12 @@ def collect(store, now, log, backfill=False) -> dict   # {"status": "ok" | "<mes
   - If the session has no cost yet, `cost = row_tokens * rate[model]`, where `rate = sum(cost) / sum(tokens)` over costed sessions of that model. These rows are `cost_estimated`, counted in `meta.sessions_estimated` and `meta.estimated_cost_usd`.
   - If there is no rate either, the cost is 0 and the row counts in `meta.sessions_without_cost`.
 - **Cursor and opencode:** the row's own `cost`. For opencode `meta.cost_reported` is false if any row in the window has tokens but zero cost (an empty window is true); when false the page shows a note that some opencode models (free or gateway) report no cost, so their cost shows as US$0.00.
+
+**OpenAI** (`collector/adapters/openai.py`, with the OpenAI routing in the opencode adapter)
+- Codex (app and CLI): reads `<codex home>/state_<n>.sqlite` (newest `n`) read-only for the thread list, and each thread's rollout JSONL for `token_count` events. Only timestamps, token counts, model and effort are parsed; message text and the sign-in file are never read. Per-thread byte offset and last total are kept in kv `openai:offsets`. Input is `input_tokens` minus cached minus cache write, cache read is `cached_input_tokens`, output is `output_tokens` (reasoning is already included). Child threads (spawn edges) are subagent runs.
+- opencode requests whose provider is `openai` are filed under this platform instead of opencode (no double counting). On upgrade, earlier `openai/` rows are removed from opencode once (kv `opencode:openai_split`) and re-read.
+- Cost is always 0 (plan requests have no price), so `meta.cost_reported` is false whenever tokens were used. The ChatGPT web and desktop apps keep no token counts locally and cannot be tracked.
+- Plan (`collector/plan/openai_plan.py`): no network calls. Reads the newest `rate_limits` block from the `token_count` events in the 8 most recently written rollout files (tail only). `primary` and `secondary` windows with a `used_percent` become pools (`five_hour` for a 300 minute window, `seven_day` for 10080, else `primary` or `secondary`), skipped once their reset time has passed. The plan type and credits (`unlimited`, `has_credits`, `balance`) are stored beside the pools as an `_info` entry (no `pct`, so it is never drawn or synced) and appear as `plan.info` in the payload. Business or unlimited plans report no windows and no balance, so only `plan.info` is set; the page then shows a Credits tile and a plan note, and a Credit balance tile when a balance is reported. Peers on older versions still count OpenAI inside opencode.
 
 **opencode** (`collector/adapters/opencode.py`)
 - Reads `opencode.db` strictly read-only (see `docs/CONFIGURATION.md` for the path). Only the v2 layout (`session_v2` and `session_message`) is supported; otherwise the status is "unsupported opencode data format". Credential tables and message text are never read.

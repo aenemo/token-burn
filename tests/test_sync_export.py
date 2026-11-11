@@ -95,7 +95,7 @@ class BuildTests(Base):
         self.assertEqual(doc["hostname"], "OFFICE-PC")
         self.assertEqual(doc["app_version"], "0.2.0")
         self.assertEqual(doc["minutes"], MINUTES)
-        self.assertEqual(set(doc["platforms"]), {"claude", "cursor", "opencode"})
+        self.assertEqual(set(doc["platforms"]), {"claude", "cursor", "opencode", "openai"})
         self.assertEqual(doc["platforms"]["cursor"], {"installed": False})
         (s,) = doc["platforms"]["claude"]["series"]
         self.assertEqual(s["m"], [START_MIN + 10, START_MIN + 20])

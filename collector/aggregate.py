@@ -99,11 +99,15 @@ def plan_block_from_samples(samples, now, plan_info):
                 pools.append({"id": k, "label": pool_label(k), "now": pct,
                               "remaining": round(max(0.0, 100.0 - pct), 6),
                               "resets": v.get("resets_at")})
-    return {"status": plan_info.get("status", ""),
-            "last_lookup": plan_info.get("last_lookup"),
-            "next_lookup": plan_info.get("next_lookup"),
-            "pools": pools, "samples": thin_samples(samples, now),
-            "reset_times": reset_times(samples)}
+    info = samples[-1][1].get("_info") if samples else None
+    block = {"status": plan_info.get("status", ""),
+             "last_lookup": plan_info.get("last_lookup"),
+             "next_lookup": plan_info.get("next_lookup"),
+             "pools": pools, "samples": thin_samples(samples, now),
+             "reset_times": reset_times(samples)}
+    if isinstance(info, dict):
+        block["info"] = info          # plan type and credit balance (OpenAI only)
+    return block
 
 
 def _plan_block(store, platform, now, plan_info):
@@ -264,8 +268,9 @@ def build_platform_payload(store, platform, now, status_info):
         meta.setdefault("files", 0)
     else:
         meta["subagent_tokens_attributed"] = attributed
-        if platform == "opencode":
-            # some opencode models record cost 0 while using tokens, so the frontend should not present $0 as fact
+        if platform in ("opencode", "openai"):
+            # some opencode models (and every ChatGPT plan request) record cost 0 while using tokens, so the
+            # frontend should not present $0 as fact
             meta["cost_reported"] = not any(_tok(r) > 0 and not cost for r, cost, _ in allocated)
 
     return {"status": status_info.get("status", "ok"),

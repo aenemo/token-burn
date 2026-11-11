@@ -136,6 +136,14 @@ class Store:
         self.db.execute("INSERT OR REPLACE INTO session_cost(platform, session_id, model, cost)"
                         " VALUES(?,?,?,?)", (platform, session_id, model, float(cost)))
 
+    def drop_model_prefix(self, platform, prefix):
+        """Delete one platform's stored usage, session totals and subagent runs whose model label starts
+        with prefix (rows that moved to another platform and will be collected there again)."""
+        want = prefix.lower()
+        for table in ("usage_minute", "session_tokens", "session_cost", "subagent_runs"):
+            self.db.execute("DELETE FROM %s WHERE platform=? AND substr(lower(model), 1, ?) = ?" % table,
+                            (platform, len(want), want))
+
     # ---- subagent runs
     def upsert_subagent_run(self, run: SubagentRun):
         old = self.db.execute("SELECT * FROM subagent_runs WHERE platform=? AND agent_id=?",

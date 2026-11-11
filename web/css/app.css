@@ -20,6 +20,8 @@
   --cursor-soft: rgba(79, 70, 229, 0.10);
   --opencode: #0d9488;
   --opencode-soft: rgba(13, 148, 136, 0.12);
+  --openai: #16a34a;
+  --openai-soft: rgba(22, 163, 74, 0.12);
   --pad: 16px;
 }
 @media (prefers-color-scheme: dark) {
@@ -44,6 +46,8 @@
     --cursor-soft: rgba(129, 140, 248, 0.14);
     --opencode: #2dd4bf;
     --opencode-soft: rgba(45, 212, 191, 0.14);
+    --openai: #4ade80;
+    --openai-soft: rgba(74, 222, 128, 0.14);
   }
 }
 * { box-sizing: border-box; }
@@ -74,6 +78,7 @@ button.prov { --pc: var(--accent); border-color: var(--pc); }
 button.prov[data-prov="claude"] { --pc: var(--claude); }
 button.prov[data-prov="cursor"] { --pc: var(--cursor); }
 button.prov[data-prov="opencode"] { --pc: var(--opencode); }
+button.prov[data-prov="openai"] { --pc: var(--openai); }
 button.prov:hover { border-color: var(--pc); }
 button.prov[aria-pressed="true"] { background: var(--pc); border-color: var(--pc); color: #fff; }
 button.prov[aria-pressed="false"] { background: transparent; color: var(--muted); border-style: dashed; }
@@ -90,6 +95,8 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .cols > section { min-width: 0; }
 .cols[hidden], .cols > section[hidden] { display: none; }
 @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
+/* four columns need more room: two by two between the stacked and the full width layouts */
+@media (min-width: 1101px) and (max-width: 1500px) { .cols.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
 /* Align corresponding blocks (head, tiles, 8 cards) of the columns: each visible
    column section spans the same 10 row tracks via subgrid, so any visible subset
@@ -107,6 +114,7 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .col { --col: var(--claude); --col-soft: var(--claude-soft); }
 .col-cursor { --col: var(--cursor); --col-soft: var(--cursor-soft); }
 .col-opencode { --col: var(--opencode); --col-soft: var(--opencode-soft); }
+.col-openai { --col: var(--openai); --col-soft: var(--openai-soft); }
 .plat-head {
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 14px; border-radius: 10px; background: var(--col-soft); border-left: 5px solid var(--col);

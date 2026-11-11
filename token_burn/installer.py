@@ -627,7 +627,7 @@ def _install(args, con):
     old_dir = Path(old_dir) if old_dir and il.is_install(old_dir) else None
     choice = "fresh"
     if wizard:
-        say("Welcome to Token Burn. It shows your Claude Code, Cursor and opencode token usage on a private "
+        say("Welcome to Token Burn. It shows your Claude Code, Cursor, opencode and OpenAI token usage on a private "
             "page at %s. Nothing leaves this computer unless you choose a shared folder in the next step."
             % paths.URL)
         if existing:

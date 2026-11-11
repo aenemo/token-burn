@@ -11,6 +11,8 @@ from collector.effort import normalise_effort
 from collector.schema import SubagentRun, UsageRecord
 
 PLATFORM = "opencode"
+OPENAI = "openai"            # opencode's provider id for OpenAI / ChatGPT; collected as the OpenAI platform
+SPLIT_KEY = "opencode:openai_split"
 DAYS = 30
 OVERLAP_MS = 2 * 3600 * 1000
 STALE_S = 24 * 3600
@@ -45,6 +47,21 @@ def num(v):
 
 def _s(v):
     return v if isinstance(v, str) else ""
+
+
+def platform_of(provider):
+    """OpenAI-provider requests belong to the OpenAI platform; everything else stays with opencode."""
+    return OPENAI if _s(provider).strip().lower() == OPENAI else PLATFORM
+
+
+def _split_openai(store):
+    """Once: OpenAI rows stored under opencode by earlier versions move to the OpenAI platform. They are
+    dropped here and the next read refetches the 30 days (opencode rows already seen are skipped)."""
+    if store.kv_get(SPLIT_KEY):
+        return
+    store.drop_model_prefix(PLATFORM, OPENAI + "/")
+    store.kv_set(LAST_TS_KEY, None)
+    store.kv_set(SPLIT_KEY, 1)
 
 
 def model_label(provider, model_id):
@@ -119,6 +136,7 @@ def _collect(store, now, log, backfill):
     if not path.is_file():
         return {"status": "opencode database not found", "meta": {}}
     cutoff_ms = int((now - DAYS * 86400) * 1000)
+    _split_openai(store)
     last_ts = store.kv_get(LAST_TS_KEY)
     full = bool(backfill) or not isinstance(last_ts, (int, float))
     start_ms = cutoff_ms if full else max(cutoff_ms, int(last_ts) - OVERLAP_MS)
@@ -129,6 +147,7 @@ def _collect(store, now, log, backfill):
     for sid, title in titles:
         if isinstance(sid, str) and isinstance(title, str):
             store.upsert_session_title(PLATFORM, sid, title, "app")
+    oa_sessions = set()
 
     newest = 0 if full else int(last_ts)
     inflight_from = None
@@ -153,12 +172,16 @@ def _collect(store, now, log, backfill):
             ts = updated / 1000.0
         if ts * 1000 < cutoff_ms:
             continue
-        if not store.seen_add(PLATFORM, "oc|%s" % mid, int(ts // 60)):
+        plat = platform_of(prov)
+        if not store.seen_add(plat, "oc|%s" % mid, int(ts // 60)):
             continue
         is_sub = bool(parent)
         label, effort = model_label(prov, mod), effort_of(variant)
+        if plat == OPENAI:
+            label = _s(mod).strip() or label     # "gpt-6.1-terra", the same name the Codex app uses
+            oa_sessions.update(x for x in (sess, parent) if isinstance(x, str) and x)
         store.add_usage(UsageRecord(
-            platform=PLATFORM,
+            platform=plat,
             agent_kind="subagent" if is_sub else "primary",
             agent_id=sess if is_sub else "",
             session_id=sess,
@@ -175,16 +198,22 @@ def _collect(store, now, log, backfill):
         requests += 1
         if is_sub:
             sub_requests += 1
-            r = runs.setdefault(sess, {"type": _s(agent), "parent": _s(parent), "t": 0.0,
-                                       "model": "", "effort": ""})
+            r = runs.setdefault((plat, sess), {"type": _s(agent), "parent": _s(parent), "t": 0.0,
+                                               "model": "", "effort": ""})
             if ts >= r["t"]:
                 r.update(t=ts, model=label, effort=effort)
 
-    for sid, r in runs.items():
+    for (plat, sid), r in runs.items():
         store.upsert_subagent_run(SubagentRun(
-            platform=PLATFORM, agent_id=sid, agent_type=r["type"],
+            platform=plat, agent_id=sid, agent_type=r["type"],
             agent_name=agent_name(r["type"], sid), session_id=r["parent"],
             model=r["model"], effort_level=r["effort"], t=r["t"], status="completed"))
+    # titles for the OpenAI platform: the sessions it has usage for, and their parents
+    known = oa_sessions | set(store.session_ids(OPENAI))
+    known.update(r["session_id"] for r in store.subagent_runs(OPENAI, 0) if r["session_id"])
+    for sid, title in titles:
+        if sid in known and isinstance(title, str):
+            store.upsert_session_title(OPENAI, sid, title, "app")
     if inflight_from is not None:
         newest = min(newest, inflight_from - 1) if newest else 0
     if newest:

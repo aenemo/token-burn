@@ -1,6 +1,6 @@
 """Collector entry point: python -m collector.collect [--backfill].
 
-Runs the Claude, Cursor and opencode adapters, the throttled plan lookups, prunes old rows
+Runs the Claude, Cursor, opencode and OpenAI adapters, the throttled plan lookups, prunes old rows
 and rewrites USAGE_JSON atomically. One platform failing never blocks the others.
 """
 import argparse
@@ -19,10 +19,12 @@ def _platforms():
     from collector.adapters import claude as claude_adapter
     from collector.adapters import cursor as cursor_adapter
     from collector.adapters import opencode as opencode_adapter
-    from collector.plan import claude_plan, cursor_plan, opencode_plan
+    from collector.adapters import openai as openai_adapter
+    from collector.plan import claude_plan, cursor_plan, openai_plan, opencode_plan
     return [("claude", claude_adapter.collect, claude_plan.fetch, claude_installed),
             ("cursor", cursor_adapter.collect, cursor_plan.fetch, cursor_installed),
-            ("opencode", opencode_adapter.collect, opencode_plan.fetch, opencode_installed)]
+            ("opencode", opencode_adapter.collect, opencode_plan.fetch, opencode_installed),
+            ("openai", openai_adapter.collect, openai_plan.fetch, openai_installed)]
 
 
 def claude_installed():
@@ -40,6 +42,12 @@ def cursor_installed():
 def opencode_installed():
     """opencode is present once it has created its database."""
     return util.opencode_db().is_file()
+
+
+def openai_installed():
+    """OpenAI is present once Codex has a state database, or opencode has logged an OpenAI request."""
+    from collector.adapters import openai as openai_adapter
+    return openai_adapter.installed()
 
 
 def _is_installed(entry, log):
@@ -147,7 +155,7 @@ def run_loop(interval=util.TOKEN_REFRESH_S, run_fn=None, sleep=time.sleep, max_i
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Collect Claude, Cursor and opencode token usage.")
+    ap = argparse.ArgumentParser(description="Collect Claude, Cursor, opencode and OpenAI token usage.")
     ap.add_argument("--backfill", action="store_true", help="re-read the full 30 days")
     ap.add_argument("--loop", action="store_true",
                     help="keep running, collecting every %d seconds" % util.TOKEN_REFRESH_S)

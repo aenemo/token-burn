@@ -18,7 +18,7 @@
         <span class="blk b4"></span><span class="blk b5"></span>
       </span>
     </div>
-    <p class="note tagline">Collects token usage and costs for Claude, Cursor and Opencode.</p>
+    <p class="note tagline">Collects token usage and costs for Claude, Cursor, Opencode and OpenAI.</p>
     <div class="meta">
       <span>Last updated: <span id="updated">loading</span></span>
       <span>Next refresh in: <span id="countdown">-</span></span>
@@ -29,6 +29,7 @@
         <button class="btn prov" type="button" data-prov="claude" aria-pressed="true">Claude</button>
         <button class="btn prov" type="button" data-prov="cursor" aria-pressed="true">Cursor</button>
         <button class="btn prov" type="button" data-prov="opencode" aria-pressed="true">opencode</button>
+        <button class="btn prov" type="button" data-prov="openai" aria-pressed="true">OpenAI</button>
       </div>
       <div class="toggle" role="group" aria-label="Metric">
         <button class="btn" id="mTokens" type="button" aria-pressed="true">Tokens</button>
@@ -41,7 +42,7 @@
 
   <div id="errbox"></div>
 
-  <div id="noclients" class="banner warn" hidden>None of Claude Code, Cursor or opencode was found on this PC. Install and sign in to any of them and its usage appears here within a minute or two.</div>
+  <div id="noclients" class="banner warn" hidden>None of Claude Code, Cursor, opencode or OpenAI (Codex) was found on this PC. Install and sign in to any of them and its usage appears here within a minute or two.</div>
   <div id="alloff" class="banner warn" hidden>Turn on a provider above to see its usage.</div>
   <div id="sync-warn" class="banner warn" hidden></div>
   <details id="machines-box" class="card machines-card" hidden>
@@ -53,6 +54,7 @@
     <section id="col-claude"></section>
     <section id="col-cursor"></section>
     <section id="col-opencode"></section>
+    <section id="col-openai"></section>
   </main>
 </div>
 
@@ -65,6 +67,7 @@
 <script src="/web/js/providers/claude.js"></script>
 <script src="/web/js/providers/cursor.js"></script>
 <script src="/web/js/providers/opencode.js"></script>
+<script src="/web/js/providers/openai.js"></script>
 <script src="/web/js/app.js"></script>
 <script src="/web/js/burn.js"></script>
 </body>
