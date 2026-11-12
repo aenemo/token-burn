@@ -25,6 +25,17 @@
     if (sp && typeof sp === 'object') for (var pk in sp) if (sp[pk] === false) prefs[pk] = false;
   } catch (e) { /* storage unavailable or invalid */ }
 
+  var LS_ORDER = 'token-burn.order', LS_PERROW = 'token-burn.perrow';
+  var MAX_PERROW = 6, DEFAULT_PERROW = 4, MIN_COL_PX = 280;
+  var order = [];            // provider ids in the order the user arranged them (missing ones follow the default order)
+  var perRow = DEFAULT_PERROW;
+  try {
+    var so = JSON.parse(localStorage.getItem(LS_ORDER) || 'null');
+    if (Array.isArray(so)) order = so.filter(function (x) { return typeof x === 'string'; });
+    var spr = parseInt(localStorage.getItem(LS_PERROW), 10);
+    if (spr >= 1 && spr <= MAX_PERROW) perRow = spr;
+  } catch (e) { /* storage unavailable or invalid */ }
+
   var mprefs = {}; // machine id -> false when the user turned that computer off (absent means on)
   try {
     var sm2 = JSON.parse(localStorage.getItem(LS_MACH) || 'null');
@@ -729,8 +740,9 @@
     });
     var main = document.querySelector('main.cols');
     if (main) {
-      main.style.setProperty('--n', String(Math.min(4, Math.max(1, shown)))); // more than four wrap onto another row
-      main.classList.toggle('cols-4', shown >= 4);
+      // columns across: the chosen number, but never more than fit the window (about 280 px each)
+      var fit = Math.max(1, Math.floor((window.innerWidth || 1600) / MIN_COL_PX));
+      main.style.setProperty('--n', String(Math.min(perRow, fit, Math.max(1, shown)))); // more wrap onto another row
       main.hidden = shown === 0;
     }
     return { shown: shown, avail: avail };
@@ -975,7 +987,116 @@
   // collector reports usage for it, so a provider that was never used never appears.
   function providerList() {
     var P = TokenBurn.providers, ids = ['claude', 'cursor', 'opencode', 'openai'].concat(TokenBurn.harnessOrder || []);
-    return ids.filter(function (id) { return !!P[id]; }).map(function (id) { return P[id]; });
+    ids = ids.filter(function (id) { return !!P[id]; });
+    // the user's arrangement first, then any provider not yet placed in the default order
+    var seen = {}, out = [];
+    order.concat(ids).forEach(function (id) { if (P[id] && ids.indexOf(id) >= 0 && !seen[id]) { seen[id] = true; out.push(id); } });
+    return out.map(function (id) { return P[id]; });
+  }
+
+  // ---------- column order and columns across ----------
+  // Puts the header buttons, the column sections and the columns array in `order`.
+  function applyOrder() {
+    var bar = $('providers'), main = document.querySelector('main.cols');
+    columns.sort(function (a, b) { return order.indexOf(a.p.id) - order.indexOf(b.p.id); });
+    order.forEach(function (id) {
+      var b = bar.querySelector('[data-prov="' + id + '"]'), s = $('col-' + id);
+      if (b) {
+        bar.appendChild(b);
+        var why = $('prov-why-' + id);
+        if (why) bar.insertBefore(why, b.nextSibling);
+      }
+      if (s) main.appendChild(s);
+    });
+  }
+  function move(id, targetId, after) {
+    if (id === targetId) return;
+    var next = order.filter(function (x) { return x !== id; });
+    var at = next.indexOf(targetId);
+    if (at < 0) return;
+    next.splice(after ? at + 1 : at, 0, id);
+    order = next;
+    try { localStorage.setItem(LS_ORDER, JSON.stringify(order)); } catch (e) { /* ignore */ }
+    applyOrder();
+    render();
+    resizeCharts();
+  }
+  // Moves one step among the buttons that are showing (Alt + arrow keys).
+  function nudge(id, dir) {
+    var vis = order.filter(function (x) {
+      var b = document.querySelector('#providers [data-prov="' + x + '"]');
+      return b && b.style.display !== 'none';
+    });
+    var i = vis.indexOf(id), j = i + dir;
+    if (i < 0 || j < 0 || j >= vis.length) return;
+    move(id, vis[j], dir > 0);
+    var b = document.querySelector('#providers [data-prov="' + id + '"]');
+    if (b) b.focus();
+  }
+  function wireReorder() {
+    var bar = $('providers'), dragId = null;
+    function clear() {
+      Array.prototype.forEach.call(bar.querySelectorAll('.drop-before,.drop-after,.dragging'), function (b) {
+        b.classList.remove('drop-before', 'drop-after', 'dragging');
+      });
+    }
+    function after(b, ev) { var r = b.getBoundingClientRect(); return ev.clientX > r.left + r.width / 2; }
+    Array.prototype.forEach.call(bar.querySelectorAll('[data-prov]'), function (b) {
+      var id = b.getAttribute('data-prov');
+      b.setAttribute('draggable', 'true');
+      b.title = b.title || 'Click to show or hide. Drag, or press Alt and an arrow key, to move its column.';
+      b.addEventListener('dragstart', function (ev) {
+        dragId = id;
+        b.classList.add('dragging');
+        if (ev.dataTransfer) { ev.dataTransfer.effectAllowed = 'move'; try { ev.dataTransfer.setData('text/plain', id); } catch (e) { /* ignore */ } }
+      });
+      b.addEventListener('dragover', function (ev) {
+        if (!dragId || dragId === id) return;
+        ev.preventDefault();
+        var a = after(b, ev);
+        b.classList.toggle('drop-after', a);
+        b.classList.toggle('drop-before', !a);
+      });
+      b.addEventListener('dragleave', function () { b.classList.remove('drop-before', 'drop-after'); });
+      b.addEventListener('drop', function (ev) {
+        ev.preventDefault();
+        var a = after(b, ev), from = dragId;
+        dragId = null;
+        clear();
+        if (from) move(from, id, a);
+      });
+      b.addEventListener('dragend', function () { dragId = null; clear(); });
+      b.addEventListener('keydown', function (ev) {
+        if (ev.altKey && (ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')) {
+          ev.preventDefault();
+          nudge(id, ev.key === 'ArrowRight' ? 1 : -1);
+        }
+      });
+    });
+  }
+  function buildPerRow() {
+    var sel = $('perRow');
+    if (!sel) return;
+    for (var n = 1; n <= MAX_PERROW; n++) {
+      var o = document.createElement('option');
+      o.value = String(n);
+      o.textContent = String(n);
+      sel.appendChild(o);
+    }
+    sel.value = String(perRow);
+    sel.addEventListener('change', function () {
+      var v = parseInt(sel.value, 10);
+      if (!(v >= 1 && v <= MAX_PERROW)) return;
+      perRow = v;
+      try { localStorage.setItem(LS_PERROW, String(v)); } catch (e) { /* ignore */ }
+      render();
+      resizeCharts();
+    });
+    var t = null;
+    window.addEventListener('resize', function () {   // the fit cap depends on the window width
+      clearTimeout(t);
+      t = setTimeout(function () { render(); resizeCharts(); }, 150);
+    });
   }
   function ensureProviderElements(list) {
     var bar = $('providers'), main = document.querySelector('main.cols');
@@ -1006,6 +1127,10 @@
     ensureProviderElements(list);
     buildControls();
     columns = list.map(function (p) { return new Column(p, $('col-' + p.id)); });
+    order = list.map(function (p) { return p.id; });   // the arranged order, with any new provider added at the end
+    applyOrder();
+    wireReorder();
+    buildPerRow();
     setInterval(function () {
       var s = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000));
       $('countdown').textContent = state.nextAt ? s + ' s' : '-';

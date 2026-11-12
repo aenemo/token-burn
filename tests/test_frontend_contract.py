@@ -43,6 +43,16 @@ class FrontendContract(unittest.TestCase):
         self.assertLess(html.index("providers/openai.js"), html.index("providers/harness.js"))
         self.assertLess(html.index("providers/harness.js"), html.index("js/app.js"))
 
+    def test_columns_across_and_reorder(self):
+        html, app, css = read("index.html"), read("js/app.js"), read("css/app.css")
+        self.assertIn('id="perRow"', html)
+        self.assertIn("MAX_PERROW = 6", app)
+        self.assertIn("token-burn.perrow", app)
+        self.assertIn("token-burn.order", app)
+        self.assertIn("'dragstart'", app)
+        self.assertIn("ev.altKey", app)
+        self.assertIn(".drop-before", css)
+
     def test_opencode_files_and_title(self):
         html = read("index.html")
         self.assertIn('<script src="/web/js/providers/opencode.js"></script>', html)

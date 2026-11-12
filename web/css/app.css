@@ -95,8 +95,15 @@ button:focus-visible, select:focus-visible, input:focus-visible { outline: 2px s
 .cols > section { min-width: 0; }
 .cols[hidden], .cols > section[hidden] { display: none; }
 @media (max-width: 1100px) { .cols { grid-template-columns: 1fr; } }
-/* four columns need more room: two by two between the stacked and the full width layouts */
-@media (min-width: 1101px) and (max-width: 1500px) { .cols.cols-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* the columns-across setting (and a cap for the window width) is applied through --n by app.js */
+.perrow { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; }
+.perrow select { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 4px 6px; }
+@media (max-width: 1100px) { .perrow { display: none; } }
+/* provider buttons can be dragged (or moved with Alt + arrow keys) to reorder the columns */
+button.prov[draggable="true"] { cursor: grab; }
+button.prov.dragging { opacity: 0.4; }
+button.prov.drop-before { box-shadow: -3px 0 0 var(--accent); }
+button.prov.drop-after { box-shadow: 3px 0 0 var(--accent); }
 
 /* Align corresponding blocks (head, tiles, 8 cards) of the columns: each visible
    column section spans the same 10 row tracks via subgrid, so any visible subset
