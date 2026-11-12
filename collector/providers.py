@@ -20,6 +20,7 @@ HARNESS = {
     "qwen": ("Qwen", ("alibaba", "alibaba-cn", "qwen", "dashscope")),
     "meta": ("Meta", ("llama", "meta", "meta-llama")),
     "copilot": ("GitHub Copilot", ("github-copilot", "github-models")),
+    "xai": ("xAI Grok", ("xai", "x-ai", "grok")),
 }
 
 PLATFORMS = tuple(HARNESS)

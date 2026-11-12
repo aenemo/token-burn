@@ -25,13 +25,17 @@ def _platforms():
             ("cursor", cursor_adapter.collect, cursor_plan.fetch, cursor_installed),
             ("opencode", opencode_adapter.collect, opencode_plan.fetch, opencode_installed),
             ("openai", openai_adapter.collect, openai_plan.fetch, openai_installed)]
-    # Providers opencode records (DeepSeek, NVIDIA ...): the opencode adapter files their rows, so they have
-    # no adapter of their own. They count as installed only once they have usage (see _usage_based).
-    return base + [(p, _no_collect, opencode_plan.fetch, None) for p in providers.PLATFORMS]
+    # Providers opencode records (DeepSeek, NVIDIA ...): the opencode adapter files their rows. A few also have
+    # a standalone tool that is read too (Gemini CLI, Qwen Code ...: adapters/tools.py). They count as installed
+    # only once they have usage (see _usage_based).
+    return base + [(p, _tool_collect(p), opencode_plan.fetch, None) for p in providers.PLATFORMS]
 
 
-def _no_collect(store, now, log, backfill=False):
-    return {"status": "ok", "meta": {}}
+def _tool_collect(plat):
+    def collect_fn(store, now, log, backfill=False):
+        from collector.adapters import tools
+        return tools.collect_platform(plat, store, now, log, backfill)
+    return collect_fn
 
 
 def _usage_based(name):
@@ -94,7 +98,14 @@ def run(backfill=False, now=None, platforms=None, log=None):
             for entry in platforms:
                 name, collect_fn, fetch_fn = entry[:3]
                 if _usage_based(name):
-                    continue        # decided below, once opencode has filed this pass's rows
+                    # no plan lookup, and installed is decided below once the rows are in. The tool reader
+                    # runs here so a broken one only costs its own column.
+                    try:
+                        collect_fn(store, now, log, backfill=backfill)
+                        store.commit()
+                    except Exception as e:
+                        log.error("%s collect failed: %s", name, type(e).__name__)
+                    continue
                 if not installed[name]:
                     continue
                 try:

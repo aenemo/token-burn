@@ -16,7 +16,7 @@ class MappingTests(unittest.TestCase):
     def test_known_provider_ids(self):
         for pid, plat in (("deepseek", "deepseek"), ("NVIDIA", "nvidia"), ("mistral", "mistral"),
                           ("google-vertex", "google"), ("github-copilot", "copilot"),
-                          ("alibaba", "qwen"), ("llama", "meta")):
+                          ("alibaba", "qwen"), ("llama", "meta"), ("xai", "xai"), ("x-ai", "xai")):
             self.assertEqual(providers.platform_of_provider(pid), plat, pid)
 
     def test_unknown_and_bad_ids_stay_with_opencode(self):
@@ -78,7 +78,8 @@ class CollectTests(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.db = Path(self.tmp) / "opencode.db"
         self.addCleanup(shutil.rmtree, self.tmp, True)
-        p = mock.patch.dict(os.environ, {"TOKEN_BURN_OPENCODE_DB": str(self.db)})
+        p = mock.patch.dict(os.environ, {"TOKEN_BURN_OPENCODE_DB": str(self.db),
+                                         "TOKEN_BURN_TOOLS_HOME": self.tmp})
         p.start()
         self.addCleanup(p.stop)
 

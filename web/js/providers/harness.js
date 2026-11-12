@@ -15,7 +15,8 @@
     ['mistral', 'Mistral', 30],
     ['qwen', 'Qwen', 275],
     ['meta', 'Meta', 205],
-    ['copilot', 'GitHub Copilot', 320]
+    ['copilot', 'GitHub Copilot', 320],
+    ['xai', 'xAI Grok', 0]
   ];
 
   function hsl(h, s, l) {
@@ -54,8 +55,8 @@
       accent: hsl(hue, 62, 42),
       tokensAvailable: function () { return true; },
       notes: function (meta) {
-        var n = [name + ' usage comes from ' + name + ' models used through opencode. It is shown separately from opencode\'s own models.'];
-        if (meta.cost_reported === false) n.push('Some ' + name + ' models report no cost through opencode, so their cost shows as US$0.00. Token use is the figure to rely on.');
+        var n = [name + ' usage comes from ' + name + ' models used through opencode and from the ' + name + ' tool\'s own local session files, where it keeps them. It is shown separately from opencode\'s own models.'];
+        if (meta.cost_reported === false) n.push('Some ' + name + ' usage reports no cost (the tools that keep their own files do not record one), so it shows as US$0.00. Token use is the figure to rely on.');
         return n;
       },
       subagentNotes: function () {

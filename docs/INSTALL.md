@@ -5,8 +5,8 @@ Supported: Windows 10 or later, macOS 12 or later, and Linux with systemd (cron 
 ## Route 1: PyInstaller zip (no Python needed)
 
 1. Download `token-burn-<version>-<OS>.zip` and `SHA256SUMS` from the GitHub Release. Verify the checksum.
-   - Windows: `certutil -hashfile token-burn-v0.7.1-Windows.zip SHA256`
-   - macOS: `shasum -a 256 token-burn-v0.7.1-macOS.zip`
+   - Windows: `certutil -hashfile token-burn-v0.8.0-Windows.zip SHA256`
+   - macOS: `shasum -a 256 token-burn-v0.8.0-macOS.zip`
    - Linux: `sha256sum -c SHA256SUMS --ignore-missing`
 2. Unzip the whole folder anywhere (your Desktop or Documents is fine, but not straight from inside the zip viewer).
 3. Start the installer:

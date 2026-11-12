@@ -85,7 +85,7 @@ Opening or refreshing the dashboard spends no model tokens.
 
 ## Providers recorded by opencode
 
-`collector/providers.py` lists the model providers that opencode records but that get their own column: Google, DeepSeek, NVIDIA, Mistral, Qwen, Meta and GitHub Copilot (each with the opencode `providerID` values that map to it). `adapters/opencode.py` files each request under the matching platform (model label without the provider prefix, as OpenAI already does) and a one-off pass moves rows earlier versions filed under opencode. These platforms have no adapter of their own: `collect.py` treats one as installed only when it has usage rows in the 30 day window, and leaves it out of `usage.json` entirely otherwise. Cost is the row's own cost (`meta.cost_reported` is false if any row has tokens but no cost). The frontend builds their buttons and columns from `web/js/providers/harness.js`, and the column grid wraps after four. To add a provider opencode carries, add a line to `HARNESS` and a line to the table in `harness.js`. Standalone tools that keep their own logs (Gemini CLI, Copilot, Qwen Code, Mistral Vibe) are not read yet.
+`collector/providers.py` lists the model providers that opencode records but that get their own column: Google, DeepSeek, NVIDIA, Mistral, Qwen, Meta, GitHub Copilot and xAI Grok (each with the opencode `providerID` values that map to it). `adapters/opencode.py` files each request under the matching platform (model label without the provider prefix, as OpenAI already does) and a one-off pass moves rows earlier versions filed under opencode. These platforms have no adapter of their own: `collect.py` treats one as installed only when it has usage rows in the 30 day window, and leaves it out of `usage.json` entirely otherwise. Cost is the row's own cost (`meta.cost_reported` is false if any row has tokens but no cost). The frontend builds their buttons and columns from `web/js/providers/harness.js`, and the column grid wraps after four. To add a provider opencode carries, add a line to `HARNESS` and a line to the table in `harness.js`. Standalone tools that keep their own logs (Gemini CLI, Copilot, Qwen Code, Mistral Vibe) are not read yet.
 
 ## Unified schema
 
@@ -215,3 +215,13 @@ Install flow (zip builds): the wizard runs from wherever the zip was unzipped, c
 | `web/css/app.css` | Layout and light and dark theme variables |
 
 Each column, top to bottom: summary tiles, usage graph with model chips, plan usage (chart and table), Statistics table, Primary agent table, Subagents table. The columns stack below 1100 px.
+
+## Standalone tool readers
+
+`collector/adapters/tools.py` reads the local session files of tools that are not run through opencode and files their usage under the same provider platform: Gemini CLI (`~/.gemini/tmp/*/chats`) to Google, Qwen Code (`~/.qwen/usage` ledger, else `projects/*/chats`) to Qwen, GitHub Copilot CLI (`~/.copilot/session-state/*/events.jsonl`, totals from `session.shutdown`) to GitHub Copilot, Grok Build (`~/.grok/sessions`) to xAI Grok and Mistral Vibe (`~/.vibe/logs/session`) to Mistral. `collect.py` runs the reader of each provider platform before deciding whether it is installed. Rules:
+
+- Read-only and tolerant. Token counts are found by their usual field names, not one fixed layout, and anything unreadable is skipped. Message text is never read into the store.
+- Append-only JSONL is read from the saved byte offset (kept in the `kv` table); cumulative counters (Vibe `meta.json`, Grok `signals.json`) add only their growth. A `seen` key per record stops double counting if a file is rewritten.
+- No tool reports a cost, so cost is 0 and `meta.cost_reported` is false.
+- Folder overrides: `GEMINI_CLI_HOME`, `QWEN_DATA_DIR`, `COPILOT_HOME`, `GROK_HOME`, `VIBE_HOME`. `TOKEN_BURN_TOOLS_HOME` replaces the home folder for all of them (tests, trials).
+- The formats were taken from the tools' documentation and other usage trackers, not from samples on the development computer. Check a real file when one is available.

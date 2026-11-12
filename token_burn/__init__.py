@@ -1,2 +1,2 @@
 """token-burn: cross-platform CLI for the Claude, Cursor, opencode and OpenAI token usage dashboard."""
-__version__ = "0.7.1"
+__version__ = "0.8.0"
