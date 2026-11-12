@@ -702,6 +702,8 @@
       if (sec) sec.hidden = !on;
       var tb = document.querySelector('#providers [data-prov="' + c.p.id + '"]');
       if (tb) {
+        // a provider opencode records is only worth a button once it has been used
+        tb.style.display = (!installed && (TokenBurn.harnessOrder || []).indexOf(c.p.id) >= 0) ? 'none' : '';
         var why = $('prov-why-' + c.p.id);
         if (!why) {
           why = el('span', 'sr-only');
@@ -727,7 +729,7 @@
     });
     var main = document.querySelector('main.cols');
     if (main) {
-      main.style.setProperty('--n', String(Math.max(1, shown)));
+      main.style.setProperty('--n', String(Math.min(4, Math.max(1, shown)))); // more than four wrap onto another row
       main.classList.toggle('cols-4', shown >= 4);
       main.hidden = shown === 0;
     }
@@ -968,14 +970,42 @@
       });
   }
 
+  // Provider list in column order: the four built-in ones, then the providers opencode records
+  // (providers/harness.js). Their buttons and sections are added here; a column only shows once the
+  // collector reports usage for it, so a provider that was never used never appears.
+  function providerList() {
+    var P = TokenBurn.providers, ids = ['claude', 'cursor', 'opencode', 'openai'].concat(TokenBurn.harnessOrder || []);
+    return ids.filter(function (id) { return !!P[id]; }).map(function (id) { return P[id]; });
+  }
+  function ensureProviderElements(list) {
+    var bar = $('providers'), main = document.querySelector('main.cols');
+    list.forEach(function (p) {
+      var rgb = p.accent ? 'rgb(' + p.accent.join(',') + ')' : null;
+      if (!document.querySelector('#providers [data-prov="' + p.id + '"]')) {
+        var b = el('button', 'btn prov', p.name);
+        b.type = 'button';
+        b.setAttribute('data-prov', p.id);
+        b.setAttribute('aria-pressed', 'true');
+        if (rgb) b.style.setProperty('--pc', rgb);
+        bar.appendChild(b);
+      }
+      if (!$('col-' + p.id)) {
+        var s = document.createElement('section');
+        s.id = 'col-' + p.id;
+        if (rgb) {
+          s.style.setProperty('--col', rgb);
+          s.style.setProperty('--col-soft', 'rgba(' + p.accent.join(',') + ',0.12)');
+        }
+        main.appendChild(s);
+      }
+    });
+  }
+
   function start() {
+    var list = providerList();
+    ensureProviderElements(list);
     buildControls();
-    columns = [
-      new Column(TokenBurn.providers.claude, $('col-claude')),
-      new Column(TokenBurn.providers.cursor, $('col-cursor')),
-      new Column(TokenBurn.providers.opencode, $('col-opencode')),
-      new Column(TokenBurn.providers.openai, $('col-openai'))
-    ];
+    columns = list.map(function (p) { return new Column(p, $('col-' + p.id)); });
     setInterval(function () {
       var s = Math.max(0, Math.round((state.nextAt - Date.now()) / 1000));
       $('countdown').textContent = state.nextAt ? s + ' s' : '-';

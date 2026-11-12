@@ -16,6 +16,7 @@ import secrets
 import socket
 from pathlib import Path
 
+from collector import providers
 from collector.sync import config, peers, validate
 from collector.util import MINUTES, host_fingerprint, iso, parse_ts
 
@@ -354,7 +355,8 @@ def build_export(local_payloads, local_plan_samples, cfg, now, app_version=None,
         ad = adopted["platforms"].get(name) if adopted else None
         if not isinstance(payload, dict) or payload.get("installed") is False:
             if ad is None:
-                plats[name] = {"installed": False}
+                if name not in providers.PLATFORMS:     # a provider never used is left out entirely
+                    plats[name] = {"installed": False}
                 continue
             payload = {}
         cells = _payload_cells(payload, now_min)

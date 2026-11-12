@@ -14,6 +14,7 @@ import stat
 import unicodedata
 import zlib
 
+from collector import providers
 from collector.sync import config
 from collector.util import MINUTES, iso, parse_ts
 
@@ -22,7 +23,7 @@ MAX_PLAIN = 64 * 1024 * 1024
 MAX_CONTROL = 4096
 CHUNK = 1024 * 1024
 
-PLATFORMS = ("claude", "cursor", "opencode", "openai")
+PLATFORMS = ("claude", "cursor", "opencode", "openai") + providers.PLATFORMS
 SERIES_FIELDS = ("input", "output", "cache", "cost", "requests", "sub_input", "sub_output",
                  "sub_cache", "sub_cost", "cache_read", "sub_cache_read")
 _REQUIRED = ("input", "output", "cache", "cost", "requests")

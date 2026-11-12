@@ -11,17 +11,18 @@ newest written member of a group represents it; older members are "superseded by
 """
 import copy
 
+from collector import providers
 from collector.aggregate import plan_block_from_samples
 from collector.sync import validate
 from collector.util import MINUTES, iso, parse_ts
 
 FIELDS = validate.SERIES_FIELDS      # same order as the cells in collector/aggregate.py
 COST_IDX = (3, 8)
-ADD_PLATFORMS = ("claude", "opencode", "openai")
+ADD_PLATFORMS = ("claude", "opencode", "openai") + providers.PLATFORMS
 FROM_OTHERS = "ok (from other computers)"
 STALE_S = 3600
 THIRTY_DAYS_S = 30 * 86400
-TOKEN_PLATFORMS = ("claude", "opencode", "openai")     # what tokens_30d counts (Cursor is account-wide)
+TOKEN_PLATFORMS = ("claude", "opencode", "openai") + providers.PLATFORMS     # what tokens_30d counts (Cursor is account-wide)
 
 
 def _new_cell():
@@ -438,7 +439,7 @@ def merge_platform(platform, local_payload, peers, now, self_id, local_plan_samp
     peer_runs = [r for c in contrib if c[0] != self_id or not local_installed for r in c[3]]
     if not local_installed:
         meta["subagent_tokens_attributed"] = any(r.get("input") is not None for r in peer_runs)
-    if platform in ("opencode", "openai"):
+    if platform in ("opencode", "openai") + providers.PLATFORMS:
         missing = any(_total(cell) > 0 and not cell[3] for c in contrib
                       if c[0] != self_id or not local_installed
                       for ent in c[2].values() for cell in ent["cells"].values())

@@ -6,13 +6,14 @@ read or logged: the query pulls just the time, model, cost and token fields.
 """
 import sqlite3
 
-from collector import util
+from collector import providers, util
 from collector.effort import normalise_effort
 from collector.schema import SubagentRun, UsageRecord
 
 PLATFORM = "opencode"
 OPENAI = "openai"            # opencode's provider id for OpenAI / ChatGPT; collected as the OpenAI platform
 SPLIT_KEY = "opencode:openai_split"
+HARNESS_SPLIT_KEY = "opencode:provider_split"
 DAYS = 30
 OVERLAP_MS = 2 * 3600 * 1000
 STALE_S = 24 * 3600
@@ -50,8 +51,11 @@ def _s(v):
 
 
 def platform_of(provider):
-    """OpenAI-provider requests belong to the OpenAI platform; everything else stays with opencode."""
-    return OPENAI if _s(provider).strip().lower() == OPENAI else PLATFORM
+    """OpenAI-provider requests belong to the OpenAI platform, the providers in collector/providers.py to their
+    own platforms (DeepSeek, NVIDIA and so on); everything else stays with opencode."""
+    if _s(provider).strip().lower() == OPENAI:
+        return OPENAI
+    return providers.platform_of_provider(provider) or PLATFORM
 
 
 def _split_openai(store):
@@ -62,6 +66,18 @@ def _split_openai(store):
     store.drop_model_prefix(PLATFORM, OPENAI + "/")
     store.kv_set(LAST_TS_KEY, None)
     store.kv_set(SPLIT_KEY, 1)
+
+
+def _split_providers(store):
+    """Once: rows of the providers in collector/providers.py that earlier versions filed under opencode move
+    to their own platforms, the same way as the OpenAI split."""
+    if store.kv_get(HARNESS_SPLIT_KEY):
+        return
+    for plat in providers.PLATFORMS:
+        for prefix in providers.model_prefixes(plat):
+            store.drop_model_prefix(PLATFORM, prefix)
+    store.kv_set(LAST_TS_KEY, None)
+    store.kv_set(HARNESS_SPLIT_KEY, 1)
 
 
 def model_label(provider, model_id):
@@ -137,6 +153,7 @@ def _collect(store, now, log, backfill):
         return {"status": "opencode database not found", "meta": {}}
     cutoff_ms = int((now - DAYS * 86400) * 1000)
     _split_openai(store)
+    _split_providers(store)
     last_ts = store.kv_get(LAST_TS_KEY)
     full = bool(backfill) or not isinstance(last_ts, (int, float))
     start_ms = cutoff_ms if full else max(cutoff_ms, int(last_ts) - OVERLAP_MS)
@@ -147,7 +164,7 @@ def _collect(store, now, log, backfill):
     for sid, title in titles:
         if isinstance(sid, str) and isinstance(title, str):
             store.upsert_session_title(PLATFORM, sid, title, "app")
-    oa_sessions = set()
+    split_sessions = {}      # platform -> session ids seen this pass, for the platforms split out of opencode
 
     newest = 0 if full else int(last_ts)
     inflight_from = None
@@ -177,9 +194,10 @@ def _collect(store, now, log, backfill):
             continue
         is_sub = bool(parent)
         label, effort = model_label(prov, mod), effort_of(variant)
-        if plat == OPENAI:
-            label = _s(mod).strip() or label     # "gpt-6.1-terra", the same name the Codex app uses
-            oa_sessions.update(x for x in (sess, parent) if isinstance(x, str) and x)
+        if plat != PLATFORM:
+            label = _s(mod).strip() or label     # "gpt-6.1-terra" or "deepseek-chat": the provider has its own column
+            split_sessions.setdefault(plat, set()).update(
+                x for x in (sess, parent) if isinstance(x, str) and x)
         store.add_usage(UsageRecord(
             platform=plat,
             agent_kind="subagent" if is_sub else "primary",
@@ -208,12 +226,15 @@ def _collect(store, now, log, backfill):
             platform=plat, agent_id=sid, agent_type=r["type"],
             agent_name=agent_name(r["type"], sid), session_id=r["parent"],
             model=r["model"], effort_level=r["effort"], t=r["t"], status="completed"))
-    # titles for the OpenAI platform: the sessions it has usage for, and their parents
-    known = oa_sessions | set(store.session_ids(OPENAI))
-    known.update(r["session_id"] for r in store.subagent_runs(OPENAI, 0) if r["session_id"])
-    for sid, title in titles:
-        if sid in known and isinstance(title, str):
-            store.upsert_session_title(OPENAI, sid, title, "app")
+    # titles for the platforms split out of opencode: the sessions each has usage for, and their parents
+    for plat in (OPENAI,) + providers.PLATFORMS:
+        known = split_sessions.get(plat, set()) | set(store.session_ids(plat))
+        known.update(r["session_id"] for r in store.subagent_runs(plat, 0) if r["session_id"])
+        if not known:
+            continue
+        for sid, title in titles:
+            if sid in known and isinstance(title, str):
+                store.upsert_session_title(plat, sid, title, "app")
     if inflight_from is not None:
         newest = min(newest, inflight_from - 1) if newest else 0
     if newest:

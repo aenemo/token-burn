@@ -1,5 +1,5 @@
 """Build the per-platform payload and the full usage.json document."""
-from collector import openai_prices
+from collector import openai_prices, providers
 from collector.util import MINUTES, PLAN_INTERVAL_S, TOKEN_REFRESH_S, iso, parse_ts
 
 AUTO = "Auto Cost"
@@ -283,7 +283,7 @@ def build_platform_payload(store, platform, now, status_info):
         meta.setdefault("files", 0)
     else:
         meta["subagent_tokens_attributed"] = attributed
-        if platform == "opencode":
+        if platform == "opencode" or platform in providers.PLATFORMS:
             # some opencode models record cost 0 while using tokens, so the frontend should not present $0 as fact
             meta["cost_reported"] = not any(_tok(r) > 0 and not cost for r, cost, _ in allocated)
         elif platform == "openai":

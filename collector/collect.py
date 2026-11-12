@@ -8,7 +8,7 @@ import os
 import sys
 import time
 
-from collector import util
+from collector import providers, util
 from collector.aggregate import build_platform_payload, build_usage_json
 from collector.plan import maybe_lookup
 from collector.store import Store
@@ -21,10 +21,21 @@ def _platforms():
     from collector.adapters import opencode as opencode_adapter
     from collector.adapters import openai as openai_adapter
     from collector.plan import claude_plan, cursor_plan, openai_plan, opencode_plan
-    return [("claude", claude_adapter.collect, claude_plan.fetch, claude_installed),
+    base = [("claude", claude_adapter.collect, claude_plan.fetch, claude_installed),
             ("cursor", cursor_adapter.collect, cursor_plan.fetch, cursor_installed),
             ("opencode", opencode_adapter.collect, opencode_plan.fetch, opencode_installed),
             ("openai", openai_adapter.collect, openai_plan.fetch, openai_installed)]
+    # Providers opencode records (DeepSeek, NVIDIA ...): the opencode adapter files their rows, so they have
+    # no adapter of their own. They count as installed only once they have usage (see _usage_based).
+    return base + [(p, _no_collect, opencode_plan.fetch, None) for p in providers.PLATFORMS]
+
+
+def _no_collect(store, now, log, backfill=False):
+    return {"status": "ok", "meta": {}}
+
+
+def _usage_based(name):
+    return name in providers.PLATFORMS
 
 
 def claude_installed():
@@ -82,6 +93,8 @@ def run(backfill=False, now=None, platforms=None, log=None):
         with Store() as store:
             for entry in platforms:
                 name, collect_fn, fetch_fn = entry[:3]
+                if _usage_based(name):
+                    continue        # decided below, once opencode has filed this pass's rows
                 if not installed[name]:
                     continue
                 try:
@@ -103,8 +116,17 @@ def run(backfill=False, now=None, platforms=None, log=None):
             store.commit()
             for entry in platforms:
                 name = entry[0]
+                if not _usage_based(name):
+                    continue
+                installed[name] = bool(store.usage_rows(name, int(now // 60) - util.MINUTES))
+                if installed[name]:
+                    infos[name] = {"status": "ok", "meta": {}, "plan": {
+                        "status": "no plan data", "last_lookup": None, "next_lookup": None}}
+            for entry in platforms:
+                name = entry[0]
                 if not installed[name]:
-                    payloads[name] = _not_installed_payload(name)
+                    if not _usage_based(name):      # a provider never used gets no entry at all
+                        payloads[name] = _not_installed_payload(name)
                     continue
                 try:
                     payloads[name] = build_platform_payload(store, name, now, infos[name])
@@ -130,7 +152,7 @@ def run(backfill=False, now=None, platforms=None, log=None):
             reqs = sum(sum(s["requests"]) for s in p["series"])
             parts.append("%s=%s(series=%d,requests=%d,plan=%s)" % (
                 name, p["status"], len(p["series"]), reqs, p["plan"]["status"]))
-        ok = len(payloads) == len(platforms) and all(
+        ok = all(name in payloads for name in installed if not _usage_based(name)) and all(
             p["status"] in ("ok", "not installed") for p in payloads.values())
         log.info("%s %s%s", "OK" if ok else "PARTIAL", " ".join(parts), " backfill" if backfill else "")
         return usage

@@ -1,6 +1,6 @@
 # Token Burn
 
-Version 0.6.0.
+Version 0.7.0.
 
 Token Burn (`token-burn`) collects token usage and costs for Claude, Cursor, Opencode and OpenAI and shows them on one local dashboard, side by side, in that order from the left. It runs on Windows, macOS and Linux, uses only the Python standard library at runtime, and keeps everything on your machine.
 
@@ -15,6 +15,7 @@ The default port is 8421; override with TOKEN_BURN_PORT or token-burn serve --po
 - A **Sessions** card under each Usage graph: one bar per session active in the selected window, split into model colours, following the window selector and the Tokens/Cost switch. It shows the top 15 sessions plus an "Other" bar; an **All sessions** table above the Subagents table lists every session (models, tokens, cost, last active). Clicking a model segment or button highlights that model everywhere in the column. Session names come from Claude's automatic or `/rename` titles, opencode's session titles and, for Cursor, chat and cloud agent names from this computer's Cursor app. Cursor agent runs started by other tools have no name, so they are labelled with their project folder, for example "Agent 056449 · RAG installer" (on this computer only, never synced). Other sessions show a short ID. Prompt text is never read.
 - Tokens or cost, per model and effort, with a statistics table and a subagents table.
 - Header toggle buttons (Claude, Cursor, opencode) turn each provider's column on or off live. The visible columns share the page width, the choice is remembered in the browser (`token-burn.providers`) and a provider that is not installed is disabled.
+- Provider columns from opencode: requests that opencode records for Google, DeepSeek, NVIDIA, Mistral, Qwen, Meta and GitHub Copilot models get their own column (and header button) instead of counting as opencode. A column appears only once that provider has usage in the last 30 days, so providers you never use never show. Costs are what opencode reported. Standalone tools such as Gemini CLI are not read yet. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 - opencode column: usage is read from opencode's local SQLite database (see [docs/CONFIGURATION.md](docs/CONFIGURATION.md)). Model labels read provider/model, effort is the model variant, reasoning tokens count as output, and child sessions appear as subagents (the Agents All/Split switch works). It has a Cache hit rate tile. opencode records cost 0 for free or gateway models, so cost can read US$0.00 (the page says so); rely on token use. opencode has no plan quota, so its plan card says there is no plan data. Totals match opencode's own session totals to within about 0.4 percent.
 - Plan usage history for Claude and Cursor.
 - A collector that runs every minute for tokens and refreshes plan data about every 10 minutes.

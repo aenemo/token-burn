@@ -7,7 +7,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from collector import collect, util
+from collector import collect, providers, util
 from collector.adapters import opencode
 from collector.aggregate import build_platform_payload
 from collector.plan import opencode_plan
@@ -305,7 +305,7 @@ class PayloadTests(Base):
     def test_collect_run_wires_opencode(self):
         build_db(self.db, [("s1", "assistant", msg(60, (1, 1, 0, 0, 0)))])
         names = [e[0] for e in collect._platforms()]
-        self.assertEqual(names, ["claude", "cursor", "opencode", "openai"])
+        self.assertEqual(names, ["claude", "cursor", "opencode", "openai"] + list(providers.PLATFORMS))
         entry = [e for e in collect._platforms() if e[0] == "opencode"]
         d = Path(self.tmp) / "d"
         with mock.patch.object(util, "DATA_DIR", d), mock.patch.object(util, "DB_PATH", d / "usage.db"),                 mock.patch.object(util, "USAGE_JSON", d / "usage.json"):

@@ -38,10 +38,10 @@ class FrontendContract(unittest.TestCase):
         self.assertLess(html.index('id="col-claude"'), html.index('id="col-cursor"'))
         self.assertLess(html.index('id="col-cursor"'), html.index('id="col-opencode"'))
         app = read("js/app.js")
-        self.assertLess(app.index("providers.claude, $('col-claude')"),
-                        app.index("providers.cursor, $('col-cursor')"))
-        self.assertLess(app.index("providers.cursor, $('col-cursor')"),
-                        app.index("providers.opencode, $('col-opencode')"))
+        # the built-in columns come first, then the providers opencode records (providers/harness.js)
+        self.assertIn("['claude', 'cursor', 'opencode', 'openai'].concat(TokenBurn.harnessOrder", app)
+        self.assertLess(html.index("providers/openai.js"), html.index("providers/harness.js"))
+        self.assertLess(html.index("providers/harness.js"), html.index("js/app.js"))
 
     def test_opencode_files_and_title(self):
         html = read("index.html")
@@ -50,7 +50,7 @@ class FrontendContract(unittest.TestCase):
         self.assertLess(html.index("providers/opencode.js"), html.index("js/app.js"))
         self.assertIn("<title>Token Burn {{VERSION}}</title>", html)
         self.assertIn('<h1>Token Burn <span class="ver">{{VERSION}}</span></h1>', html)
-        self.assertIn("Claude Code, Cursor, opencode or OpenAI", html)
+        self.assertIn("Claude Code, Cursor, opencode or OpenAI Codex", html)
         self.assertIn("Turn on a provider above to see its usage.", html)
         oc = read("js/providers/opencode.js")
         self.assertRegex(oc, r"id:\s*'opencode'")

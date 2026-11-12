@@ -83,6 +83,10 @@ flowchart LR
 
 Opening or refreshing the dashboard spends no model tokens.
 
+## Providers recorded by opencode
+
+`collector/providers.py` lists the model providers that opencode records but that get their own column: Google, DeepSeek, NVIDIA, Mistral, Qwen, Meta and GitHub Copilot (each with the opencode `providerID` values that map to it). `adapters/opencode.py` files each request under the matching platform (model label without the provider prefix, as OpenAI already does) and a one-off pass moves rows earlier versions filed under opencode. These platforms have no adapter of their own: `collect.py` treats one as installed only when it has usage rows in the 30 day window, and leaves it out of `usage.json` entirely otherwise. Cost is the row's own cost (`meta.cost_reported` is false if any row has tokens but no cost). The frontend builds their buttons and columns from `web/js/providers/harness.js`, and the column grid wraps after four. To add a provider opencode carries, add a line to `HARNESS` and a line to the table in `harness.js`. Standalone tools that keep their own logs (Gemini CLI, Copilot, Qwen Code, Mistral Vibe) are not read yet.
+
 ## Unified schema
 
 Every record from either platform is a `UsageRecord` (see `collector/schema.py`):

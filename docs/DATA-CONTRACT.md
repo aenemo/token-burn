@@ -2,6 +2,10 @@
 
 Every module, script and page in this project follows this file. If code and this file disagree, fix the code or update this file in the same change.
 
+## Provider platforms split from opencode
+
+`platforms` may also hold `google`, `deepseek`, `nvidia`, `mistral`, `qwen`, `meta` and `copilot`, each shaped like `opencode` (no plan quota, `meta.cost_reported`). A key is present only when that provider has usage in the window. They add across computers in sync, like opencode.
+
 ## House rules
 
 - **Australian English.** Dates in the UI are en-AU (dd/mm/yyyy, 24-hour). Numbers are formatted with `en-AU`. Money is shown as `US$`.

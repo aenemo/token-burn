@@ -320,7 +320,7 @@ class SyncAndFrontendTests(unittest.TestCase):
         self.assertLess(html.index('id="col-opencode"'), html.index('id="col-openai"'))
         self.assertLess(html.index("providers/opencode.js"), html.index("providers/openai.js"))
         self.assertLess(html.index("providers/openai.js"), html.index("js/app.js"))
-        self.assertLess(app.index("providers.opencode, $('col-opencode')"), app.index("providers.openai, $('col-openai')"))
+        self.assertLess(app.index("'opencode', 'openai'"), app.index("concat(TokenBurn.harnessOrder"))
         self.assertIn(".col-openai", css)
         self.assertIn("--openai-soft", css)
         self.assertIn("'openai'", (WEB / "js" / "machines.js").read_text(encoding="utf8"))

@@ -13,7 +13,9 @@
   'use strict';
   var TokenBurn = window.TokenBurn = window.TokenBurn || {};
 
-  var FILTERED = ['claude', 'opencode', 'openai'];
+  // harness.js loads after this file, so the provider list is read when used
+  var BASE_FILTERED = ['claude', 'opencode', 'openai'];
+  function filtered() { return BASE_FILTERED.concat(TokenBurn.harnessOrder || []); }
   var NUM_FIELDS = ['input', 'output', 'cache', 'cost', 'requests', 'sub_input', 'sub_output', 'sub_cache', 'sub_cost', 'cache_read', 'sub_cache_read'];
 
   function list(data) {
@@ -113,7 +115,7 @@
     if (!sel.length || sel.length >= all.length) return data;
     var platforms = {};
     Object.keys(data.platforms || {}).forEach(function (p) { platforms[p] = data.platforms[p]; });
-    FILTERED.forEach(function (p) {
+    filtered().forEach(function (p) {
       var plat = platforms[p];
       if (!plat) return;
       var mb = plat.machines;
@@ -157,7 +159,7 @@
     var mlist = list(data);
     mlist.forEach(function (m) { out[m.id] = 0; });
     if (!fr) return out;
-    FILTERED.forEach(function (p) {
+    filtered().forEach(function (p) {
       var plat = data.platforms && data.platforms[p];
       if (!plat) return;
       // Shift the window if this platform's series start differs from the frame's.

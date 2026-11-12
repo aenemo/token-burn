@@ -18,7 +18,7 @@
         <span class="blk b4"></span><span class="blk b5"></span>
       </span>
     </div>
-    <p class="note tagline">Collects token usage and costs for Claude, Cursor, Opencode and OpenAI.</p>
+    <p class="note tagline">Collects token usage and costs for the AI tools and providers used on this computer.</p>
     <div class="meta">
       <span>Last updated: <span id="updated">loading</span></span>
       <span>Next refresh in: <span id="countdown">-</span></span>
@@ -42,7 +42,7 @@
 
   <div id="errbox"></div>
 
-  <div id="noclients" class="banner warn" hidden>None of Claude Code, Cursor, opencode or OpenAI (Codex) was found on this PC. Install and sign in to any of them and its usage appears here within a minute or two.</div>
+  <div id="noclients" class="banner warn" hidden>No AI tool with usage data was found on this PC (Claude Code, Cursor, opencode or OpenAI Codex). Install and sign in to any of them and its usage appears here within a minute or two.</div>
   <div id="alloff" class="banner warn" hidden>Turn on a provider above to see its usage.</div>
   <div id="sync-warn" class="banner warn" hidden></div>
   <details id="machines-box" class="card machines-card" hidden>
@@ -68,6 +68,7 @@
 <script src="/web/js/providers/cursor.js"></script>
 <script src="/web/js/providers/opencode.js"></script>
 <script src="/web/js/providers/openai.js"></script>
+<script src="/web/js/providers/harness.js"></script>
 <script src="/web/js/app.js"></script>
 <script src="/web/js/burn.js"></script>
 </body>
