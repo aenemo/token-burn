@@ -16,7 +16,8 @@ class MappingTests(unittest.TestCase):
     def test_known_provider_ids(self):
         for pid, plat in (("deepseek", "deepseek"), ("NVIDIA", "nvidia"), ("mistral", "mistral"),
                           ("google-vertex", "google"), ("github-copilot", "copilot"),
-                          ("alibaba", "qwen"), ("llama", "meta"), ("xai", "xai"), ("x-ai", "xai")):
+                          ("alibaba", "qwen"), ("llama", "meta"), ("xai", "xai"), ("x-ai", "xai"),
+                          ("cloudflare-workers-ai", "cloudflare")):
             self.assertEqual(providers.platform_of_provider(pid), plat, pid)
 
     def test_unknown_and_bad_ids_stay_with_opencode(self):

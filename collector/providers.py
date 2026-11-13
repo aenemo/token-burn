@@ -21,6 +21,7 @@ HARNESS = {
     "meta": ("Meta", ("llama", "meta", "meta-llama")),
     "copilot": ("GitHub Copilot", ("github-copilot", "github-models")),
     "xai": ("xAI Grok", ("xai", "x-ai", "grok")),
+    "cloudflare": ("Cloudflare Workers AI", ("cloudflare-workers-ai", "cloudflare")),
 }
 
 PLATFORMS = tuple(HARNESS)

@@ -16,7 +16,8 @@
     ['qwen', 'Qwen', 275],
     ['meta', 'Meta', 205],
     ['copilot', 'GitHub Copilot', 320],
-    ['xai', 'xAI Grok', 0]
+    ['xai', 'xAI Grok', 0],
+    ['cloudflare', 'Cloudflare Workers AI', 24]
   ];
 
   function hsl(h, s, l) {
