@@ -116,6 +116,10 @@ def run(backfill=False, now=None, platforms=None, log=None):
                 except Exception as e:  # never let one platform block the other
                     log.error("%s collect failed: %s", name, type(e).__name__)
                     status, meta = "collect failed (%s)" % type(e).__name__, {}
+                if name == "claude":
+                    # renew Claude Code's sign-in first (a few times a day) so the plan lookup finds a valid token
+                    from collector.plan import keepalive
+                    keepalive.maybe_run(store, now, log)
                 try:
                     plan = maybe_lookup(store, name, fetch_fn, now, log)
                 except Exception as e:

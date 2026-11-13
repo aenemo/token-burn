@@ -16,6 +16,8 @@ The server binds to `127.0.0.1` only. A non-loopback client gets 403, and reques
 |---|---|---|
 | `TOKEN_BURN_DATA_DIR` | Replaces the data directory (database, `usage.json`, logs, hook logs, `config.json`). Takes priority over `location.json`. While it is set the data folder is fixed: `token-burn install --data-dir` and `token-burn data move` refuse with exit code 3, and `uninstall` leaves `location.json` alone | Read once at start-up. Useful for testing two computers on one PC (see [SYNC](SYNC.md)). Honoured by the collector, server and both hooks. To make it permanent set it as a user environment variable, then re-run `token-burn install` so scheduled jobs pick it up, and restart Cursor |
 | `TOKEN_BURN_PORT` | Dashboard port | Overridden by `--port` |
+| `TOKEN_BURN_CLAUDE_KEEPALIVE` | `0` turns the Claude sign-in keep-alive off, `1` forces it on | Default on. Also settable as `"claude_keepalive": false` in `config.json` |
+| `TOKEN_BURN_CLAUDE_BIN` | Full path of the `claude` program used by the keep-alive | Default: found on the PATH or in the usual install folders |
 | `TOKEN_BURN_CLAUDE_TOKEN` | Claude OAuth access token used for plan lookups | Highest priority in the credential resolver. Falls back to the optional `keyring` extra, then Claude's own credentials file or macOS Keychain |
 | `CURSOR_STATE_DB` | Path to Cursor's `state.vscdb` | Overrides the per-OS default location |
 | `CURSOR_PROJECTS_DIR` | Path to Cursor's `projects` folder | Overrides `~/.cursor/projects`, used to label Cursor agent runs with their project |
@@ -127,7 +129,7 @@ Cost: opencode records cost 0 for free or gateway models, so cost can read US$0.
 
 ## Claude plan credentials
 
-Plan lookups resolve a token in this order: `TOKEN_BURN_CLAUDE_TOKEN`, the system keyring (only if the `keyring` extra is installed), Claude's `.credentials.json` in the Claude config folder, then on macOS the Keychain item "Claude Code-credentials" (macOS may prompt once to allow access; choose Always Allow for the `token-burn` or Python binary). Credentials are only read, never written.
+Plan lookups resolve a token in this order: `TOKEN_BURN_CLAUDE_TOKEN`, the system keyring (only if the `keyring` extra is installed), Claude's `.credentials.json` in the Claude config folder, then on macOS the Keychain item "Claude Code-credentials" (macOS may prompt once to allow access; choose Always Allow for the `token-burn` or Python binary). Credentials are only read, never written, apart from the token renewal described below. The Claude keep-alive runs `claude --model haiku -p ok` silently in the background about every 4 hours (six times a day, before the plan lookup) so Claude Code renews its own sign-in; it retries after an hour if a run fails or the plan panel says the sign-in expired. It runs in the `claude-keepalive` folder of the data folder, discards the output, and uses a few tokens of the plan per run. A revoked sign-in cannot be renewed this way: run `claude` once and sign in.
 
 ## Constants
 

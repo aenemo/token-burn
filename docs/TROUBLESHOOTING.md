@@ -12,6 +12,7 @@ Start with `token-burn status`. Logs are in the data directory (see [CONFIGURATI
 | opencode shows no data | opencode must have created `~/.local/share/opencode/opencode.db` (or `$XDG_DATA_HOME/opencode/opencode.db`); set `TOKEN_BURN_OPENCODE_DB` if elsewhere. The status "unsupported opencode data format" means the database is not the v2 layout; "opencode database busy, will retry" clears by itself |
 | opencode cost shows US$0.00 | opencode records cost 0 for free or gateway models. Use token use instead. opencode has no plan data either |
 | Claude plan panel empty on macOS | Keychain access was denied. Re-run `token-burn collect` and allow access, or set `TOKEN_BURN_CLAUDE_TOKEN` |
+| Claude plan panel says "sign-in expired, run claude once" | The keep-alive normally prevents this. Check `claude` is on the PATH (or set `TOKEN_BURN_CLAUDE_BIN`) and that `TOKEN_BURN_CLAUDE_KEEPALIVE` is not 0. If the sign-in was revoked, run `claude` once and sign in |
 | Claude plan panel empty on Linux or Windows | No `.credentials.json` in the Claude config folder. Sign in to Claude Code, or set `TOKEN_BURN_CLAUDE_TOKEN` |
 | Subagents show n/a | The hook is not registered, or Cursor was not restarted after `token-burn install`. Run `token-burn status` |
 | Nothing runs after reboot (Linux) | systemd user lingering is off. Run `loginctl enable-linger $USER`, or use cron |

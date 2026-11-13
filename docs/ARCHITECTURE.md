@@ -225,3 +225,7 @@ Each column, top to bottom: summary tiles, usage graph with model chips, plan us
 - No tool reports a cost, so cost is 0 and `meta.cost_reported` is false.
 - Folder overrides: `GEMINI_CLI_HOME`, `QWEN_DATA_DIR`, `COPILOT_HOME`, `GROK_HOME`, `VIBE_HOME`. `TOKEN_BURN_TOOLS_HOME` replaces the home folder for all of them (tests, trials).
 - The formats were taken from the tools' documentation and other usage trackers, not from samples on the development computer. Check a real file when one is available.
+
+## Claude sign-in keep-alive
+
+`collector/plan/keepalive.py` runs `claude --model haiku -p ok` in the background about every 4 hours, just before the Claude plan lookup in the same pass, so Claude Code renews its own sign-in token and the plan panel does not fall to "sign-in expired". State lives in the `kv` table under `keepalive:claude` (`last_attempt`, `last_ok`, `ok`); a failed run, or a plan status of "sign-in expired", shortens the wait to 1 hour. It never raises, writes nothing but that state, and is switched off by `TOKEN_BURN_CLAUDE_KEEPALIVE=0` or `"claude_keepalive": false` in `config.json`. The test package sets the variable to 0 so no test starts a real `claude`.

@@ -1,6 +1,6 @@
 # Token Burn
 
-Version 0.8.1.
+Version 0.9.0.
 
 Token Burn (`token-burn`) collects token usage and costs for Claude, Cursor, Opencode and OpenAI and shows them on one local dashboard, side by side, in that order from the left. It runs on Windows, macOS and Linux, uses only the Python standard library at runtime, and keeps everything on your machine.
 
