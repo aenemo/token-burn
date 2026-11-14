@@ -247,6 +247,15 @@
       box.appendChild(ag);
     }
     if (!HAVE_ROLLING) { if (!this.canSplit) box.hidden = true; else this.syncGraphControls(); return; }
+    if (!this.canSplit) {
+      // no Agents row here, so reserve the same height: the graph lines up with the other columns
+      var gap = el('div', 'agents-ctl agents-spacer');
+      gap.setAttribute('aria-hidden', 'true');
+      var gb = el('button', 'btn', 'All');
+      gb.type = 'button'; gb.tabIndex = -1; gb.disabled = true;
+      gap.appendChild(gb);
+      box.appendChild(gap);
+    }
     var modes = el('div', 'btn-group graph-modes');
     modes.setAttribute('role', 'group');
     modes.setAttribute('aria-label', this.p.name + ' graph mode');

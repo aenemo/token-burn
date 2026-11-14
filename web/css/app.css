@@ -219,7 +219,9 @@ tr.sel td { background: var(--col-soft); font-weight: 600; }
 .graph-ctl[hidden], .span-picker[hidden] { display: none; }
 .btn-group { display: flex; flex-wrap: wrap; gap: 6px; }
 .span-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
-.agents-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.agents-ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; flex-basis: 100%; }
+/* Columns with no agent split (Cursor) keep an empty first row, so every graph starts at the same height */
+.agents-spacer { visibility: hidden; pointer-events: none; }
 .span-label { color: var(--muted); font-size: 12.5px; }
 
 /* Computers (multi-computer sync): toggle row in the header and a Computers card above the columns, both outside .cols */
