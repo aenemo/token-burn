@@ -31,19 +31,47 @@ class KeepAliveTests(unittest.TestCase):
             ran = keepalive.maybe_run(self.store, t, None)
         return ran, m
 
-    def test_first_run_then_every_four_hours(self):
-        ran, m = self.run_at(NOW)
-        self.assertTrue(ran)
-        self.assertEqual(m.call_args[0][0], "claude-bin")
-        self.assertFalse(self.run_at(NOW + 3 * 3600)[0])
-        self.assertTrue(self.run_at(NOW + 4 * 3600 + 1)[0])
+    def test_first_run_then_about_every_six_hours(self):
+        with mock.patch.object(keepalive.random, "uniform", return_value=0):
+            ran, m = self.run_at(NOW)
+            self.assertTrue(ran)
+            self.assertEqual(m.call_args[0][0], "claude-bin")
+            self.assertFalse(self.run_at(NOW + 5 * 3600)[0])
+            self.assertFalse(self.run_at(NOW + 6 * 3600 - 1)[0])
+            self.assertTrue(self.run_at(NOW + 6 * 3600)[0])
 
-    def test_six_runs_in_a_day_of_minute_passes(self):
+    def test_wait_is_six_hours_plus_or_minus_up_to_an_hour(self):
+        with mock.patch.object(keepalive.random, "uniform", return_value=-3600):
+            self.assertTrue(self.run_at(NOW)[0])
+            self.assertFalse(self.run_at(NOW + 5 * 3600 - 1)[0])
+            self.assertTrue(self.run_at(NOW + 5 * 3600)[0])
+        with mock.patch.object(keepalive.random, "uniform", return_value=3600):
+            t = NOW + 10 * 3600
+            self.assertTrue(self.run_at(t)[0])
+            self.assertFalse(self.run_at(t + 7 * 3600 - 1)[0])
+            self.assertTrue(self.run_at(t + 7 * 3600)[0])
+
+    def test_real_offsets_stay_within_an_hour_and_vary(self):
+        waits = set()
+        for i in range(30):
+            self.store.kv_set(keepalive.KEY, {})
+            self.run_at(NOW)
+            w = self.store.kv_get(keepalive.KEY)["interval"]
+            self.assertTrue(5 * 3600 <= w <= 7 * 3600)
+            waits.add(round(w))
+        self.assertGreater(len(waits), 5)
+
+    def test_a_damaged_interval_falls_back_to_six_hours(self):
+        self.store.kv_set(keepalive.KEY, {"last_attempt": NOW, "ok": True, "interval": 10})
+        self.assertFalse(self.run_at(NOW + 3600)[0])
+        self.assertTrue(self.run_at(NOW + 7 * 3600)[0])
+
+    def test_about_four_runs_in_a_day_of_minute_passes(self):
         runs = 0
         with mock.patch.object(keepalive, "run_claude", return_value=True):
             for minute in range(0, 24 * 60):
                 runs += keepalive.maybe_run(self.store, NOW + minute * 60, None)
-        self.assertEqual(runs, 6)
+        self.assertIn(runs, (3, 4, 5))
 
     def test_failure_retries_after_an_hour_not_every_pass(self):
         self.assertTrue(self.run_at(NOW, result=False)[0])

@@ -1,16 +1,18 @@
-"""Keep the Claude Code sign-in fresh by running `claude -p "ok"` about six times a day.
+"""Keep the Claude Code sign-in fresh by running `claude -p "ok"` about every 6 hours (4 times a day).
 
 The Claude plan panel reads the sign-in token that Claude Code stores. When that token has expired and cannot be
 renewed, the plan status becomes "sign-in expired, run claude once". Claude Code renews the token itself every
 time it starts, so a tiny background run is enough to keep it valid. This runs before the plan lookup in the same
 pass, so the lookup finds the renewed token and never has to rotate it itself.
 
-Switch it off with TOKEN_BURN_CLAUDE_KEEPALIVE=0 or "claude_keepalive": false in config.json (data folder).
+Each wait is 6 hours plus or minus a random offset of up to an hour, picked fresh after every run, so runs do not
+fall on a fixed clock time. Switch it off with TOKEN_BURN_CLAUDE_KEEPALIVE=0 or "claude_keepalive": false in config.json (data folder).
 Each run sends one short request to the cheapest model, so it costs a few tokens of the plan. The run is silent
 (no window) and its output is never stored or logged. If the sign-in itself is gone (the refresh token has been
 revoked), the run fails and the plan panel keeps saying to run claude once: only an interactive sign-in fixes that.
 """
 import os
+import random
 import shutil
 import subprocess
 import sys
@@ -18,7 +20,8 @@ from pathlib import Path
 
 from collector import util
 
-INTERVAL_S = 4 * 3600          # six runs a day
+INTERVAL_S = 6 * 3600          # four runs a day on average
+JITTER_S = 3600                # each wait is the interval plus or minus up to this
 RETRY_S = 3600                 # after a failed run, or when the plan panel reports an expired sign-in
 TIMEOUT_S = 120
 KEY = "keepalive:claude"
@@ -63,7 +66,9 @@ def _due(state, now, plan_status):
     last = state.get("last_attempt")
     if not isinstance(last, (int, float)) or last > now:
         return True
-    wait = INTERVAL_S
+    wait = state.get("interval")
+    if not isinstance(wait, (int, float)) or not INTERVAL_S - JITTER_S <= wait <= INTERVAL_S + JITTER_S:
+        wait = INTERVAL_S
     if state.get("ok") is False or str(plan_status or "").startswith("sign-in expired"):
         wait = RETRY_S
     return now - last >= wait
@@ -94,7 +99,7 @@ def maybe_run(store, now, log=None):
         if not _due(state, now, plan_status):
             return False
         # record the attempt first so a crash or a hang cannot make every pass try again
-        state.update(last_attempt=now, ok=None)
+        state.update(last_attempt=now, ok=None, interval=INTERVAL_S + random.uniform(-JITTER_S, JITTER_S))
         store.kv_set(KEY, state)
         store.commit()
         # its own folder, so the one-word sessions stay together and out of the user's projects
