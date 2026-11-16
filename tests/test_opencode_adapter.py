@@ -213,6 +213,35 @@ class MappingTests(Base):
         self.assertEqual([p.name for p in Path(self.tmp).glob("opencode.db*")], ["opencode.db"])
 
 
+class ClaudeCodeProviderTests(Base):
+    """The claude-code provider runs Claude Code itself, so the Claude platform has those requests already."""
+    def setUp(self):
+        super().setUp()
+        build_db(self.db, [
+            ("s1", "assistant", msg(600, (100, 20, 0, 0, 0), model=("claude-code", "claude-sonnet-5-5", "low"))),
+            ("s1", "assistant", msg(500, (30, 5, 0, 0, 0), model=("Claude-Code", "claude-haiku-5-5", None))),
+            ("s1", "assistant", msg(400, (40, 8, 0, 0, 0), model=("gateway", "claude-sonnet-5-5", None))),
+            ("c1", "assistant", msg(300, (10, 1, 0, 0, 0), model=("claude-code", "claude-opus-5-5", None))),
+        ])
+
+    def test_claude_code_rows_skipped_and_other_claude_providers_kept(self):
+        res = self.run_collect()
+        self.assertEqual(res["meta"]["requests"], 1)
+        self.assertEqual([r["model"] for r in self.usage()], ["gateway/claude-sonnet-5-5"])
+        self.assertEqual(self.store.subagent_runs("opencode", 0), [])
+
+    def test_rows_stored_by_an_earlier_version_are_removed_once(self):
+        from collector.schema import UsageRecord
+        for model in ("claude-code/claude-sonnet-5-5", "gateway/claude-sonnet-5-5"):
+            self.store.add_usage(UsageRecord(platform="opencode", agent_kind="primary", agent_id="",
+                                             session_id="s1", model=model, effort_level="", input_tokens=5,
+                                             output_tokens=5, cache_read_tokens=0, cache_write_tokens=0,
+                                             cost_usd=0.0, timestamp=NOW - 600, requests=1))
+        self.run_collect()
+        self.assertEqual(sorted({r["model"] for r in self.usage()}), ["gateway/claude-sonnet-5-5"])
+        self.assertTrue(self.store.kv_get(opencode.CLAUDE_CODE_KEY))
+
+
 class StatusTests(Base):
     def test_missing_db(self):
         res = self.run_collect()

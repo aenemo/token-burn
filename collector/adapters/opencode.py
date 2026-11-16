@@ -14,6 +14,11 @@ PLATFORM = "opencode"
 OPENAI = "openai"            # opencode's provider id for OpenAI / ChatGPT; collected as the OpenAI platform
 SPLIT_KEY = "opencode:openai_split"
 HARNESS_SPLIT_KEY = "opencode:provider_split"
+CLAUDE_CODE_KEY = "opencode:claude_code_dropped"
+# opencode provider ids that run Claude Code itself. Claude Code writes those requests to its own transcripts, which
+# the Claude adapter reads, so counting them here too would count them twice. Other providers that offer Claude
+# models (a gateway, Bedrock ...) are not in Claude Code's transcripts and stay with opencode.
+CLAUDE_CODE_PROVIDERS = ("claude-code",)
 DAYS = 30
 OVERLAP_MS = 2 * 3600 * 1000
 STALE_S = 24 * 3600
@@ -78,6 +83,20 @@ def _split_providers(store):
             store.drop_model_prefix(PLATFORM, prefix)
     store.kv_set(LAST_TS_KEY, None)
     store.kv_set(HARNESS_SPLIT_KEY, 1)
+
+
+def is_claude_code(provider):
+    return _s(provider).strip().lower() in CLAUDE_CODE_PROVIDERS
+
+
+def _drop_claude_code(store):
+    """Once: rows of the Claude Code provider that earlier versions filed under opencode are removed (the
+    Claude platform already has them from Claude Code's own transcripts)."""
+    if store.kv_get(CLAUDE_CODE_KEY):
+        return
+    for pid in CLAUDE_CODE_PROVIDERS:
+        store.drop_model_prefix(PLATFORM, pid + "/")
+    store.kv_set(CLAUDE_CODE_KEY, 1)
 
 
 def model_label(provider, model_id):
@@ -154,6 +173,7 @@ def _collect(store, now, log, backfill):
     cutoff_ms = int((now - DAYS * 86400) * 1000)
     _split_openai(store)
     _split_providers(store)
+    _drop_claude_code(store)
     last_ts = store.kv_get(LAST_TS_KEY)
     full = bool(backfill) or not isinstance(last_ts, (int, float))
     start_ms = cutoff_ms if full else max(cutoff_ms, int(last_ts) - OVERLAP_MS)
@@ -182,6 +202,8 @@ def _collect(store, now, log, backfill):
             inflight_from = updated if inflight_from is None else min(inflight_from, updated)
             continue
         newest = max(newest, updated)
+        if is_claude_code(prov):
+            continue                # counted from Claude Code's own transcripts, see CLAUDE_CODE_PROVIDERS
         if in_t + out_t + cr_t + cw_t <= 0:
             continue
         ts = util.parse_ts(completed or created)
