@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "token-burn"
-version = "0.9.4"
+version = "0.9.5"
 description = "Token Burn: a local dashboard of token usage and costs for Claude Code, Cursor, opencode and OpenAI"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -32,4 +32,4 @@ include-package-data = true
 "token_burn.web" = "web"
 
 [tool.setuptools.package-data]
-"token_burn.web" = ["*.html", "css/*", "js/**/*", "vendor/*", "icons/*.svg", "icons/options/*.svg"]
+"token_burn.web" = ["*.html", "css/*", "js/**/*", "vendor/*", "icons/*.svg", "icons/*.png", "icons/*.ico", "icons/options/*.svg"]

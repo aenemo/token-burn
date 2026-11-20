@@ -167,6 +167,10 @@ class Handler(BaseHTTPRequestHandler):
                 return self._file(p)
             if path == "/api/health":
                 return self._health()
+            if path == "/favicon.ico":      # browsers and bookmark bars ask for this when the page names no usable icon
+                ico = web / "icons" / "favicon.ico"
+                if ico.is_file():
+                    return self._file(ico)
             if path.startswith("/web/"):
                 rel = path[len("/web/"):]
                 if "\x00" in rel:

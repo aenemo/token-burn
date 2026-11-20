@@ -72,6 +72,23 @@ class ServerTests(unittest.TestCase):
         self.assertIn("javascript", h["content-type"])
         self.assertEqual(h["cache-control"], "no-store")
 
+    def test_favicon_ico_served_from_icons_folder(self):
+        # Bookmark bars and browsers ask for /favicon.ico; it is the icons folder's ico, 404 when there is none.
+        self.assertEqual(self.req("GET", "/favicon.ico")[0], 404)
+        (self.web / "icons").mkdir()
+        (self.web / "icons" / "favicon.ico").write_bytes(b"\x00\x00\x01\x00")
+        s, h, b = self.req("GET", "/favicon.ico")
+        self.assertEqual((s, b), (200, b"\x00\x00\x01\x00"))
+        self.assertTrue(h["content-type"].startswith("image/"))
+
+    def test_real_icons_exist_and_are_linked(self):
+        real = Path(__file__).resolve().parent.parent / "web"
+        html = (real / "index.html").read_text(encoding="utf-8")
+        for name in ("favicon.ico", "favicon.svg", "favicon-32.png", "apple-touch-icon.png"):
+            self.assertTrue((real / "icons" / name).is_file(), name)
+        self.assertIn('href="/favicon.ico"', html)
+        self.assertIn('href="/web/icons/favicon.svg"', html)
+
     def test_static_missing(self):
         s, h, b = self.req("GET", "/web/nope.js")
         self.assertEqual(s, 404)
