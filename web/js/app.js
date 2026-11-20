@@ -495,7 +495,8 @@
     var fr = S.frame(plat, state.win);
     var rows = S.seriesStats(plat, fr);
     var tot = S.totals(rows);
-    var plan = S.planStats(plat, fr);
+    var planFr = S.planFrame(plat, fr, P.planSession);
+    var plan = S.planStats(plat, planFr);
     var runs = S.runsInWindow(plat, fr);
     this.platTokens = tot.tokens;
 
@@ -644,7 +645,7 @@
         });
       });
     }
-    if (this.planChart && !noPlan) C.updatePlan(this.planChart, plan, fr, function (i) { return self.planColor(i); }, this.root, markers);
+    if (this.planChart && !noPlan) C.updatePlan(this.planChart, plan, planFr, function (i) { return self.planColor(i); }, this.root, markers);
     this.planTable.update(plan.pools.map(function (p, i) { p.index = i; return p; }));
     this.renderValue(plat);
     this.renderForecast(plan, noPlan);

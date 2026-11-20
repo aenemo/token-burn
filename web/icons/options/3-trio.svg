@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><defs><radialGradient id="c" cx=".35" cy=".5" r=".7"><stop offset="0" stop-color="#fde68a"/><stop offset=".4" stop-color="#f59e0b"/><stop offset="1" stop-color="#ea580c"/></radialGradient><linearGradient id="t" x1="0" x2="1"><stop offset="0" stop-color="#ea580c"/><stop offset=".55" stop-color="#dc2626" stop-opacity=".55"/><stop offset="1" stop-color="#dc2626" stop-opacity="0"/></linearGradient><radialGradient id="g"><stop offset="0" stop-color="#f97316" stop-opacity=".6"/><stop offset="1" stop-color="#f97316" stop-opacity="0"/></radialGradient></defs>
+<rect width="64" height="64" rx="14" fill="#12151b"/>
+<rect x="34" y="14" width="22" height="3.5" rx="1.75" fill="url(#t)"/>
+<rect x="22" y="12" width="12" height="12" rx="2" fill="none" stroke="#5b8cff" stroke-width="2.5"/>
+<rect x="30" y="29" width="28" height="5" rx="2.5" fill="url(#t)"/>
+<rect x="12" y="25" width="18" height="18" rx="3" fill="url(#c)" stroke="#5b8cff" stroke-width="3"/>
+<rect x="34" y="49" width="20" height="3.5" rx="1.75" fill="url(#t)"/>
+<rect x="22" y="44" width="12" height="12" rx="2" fill="none" stroke="#5b8cff" stroke-width="2.5"/>
+</svg>

@@ -32,6 +32,24 @@
     };
   }
 
+  // Plan chart frame. For windows shorter than the session (30 min, 1 hour) the chart shows the whole current
+  // session instead: from its reset point (the pool's reset time minus the session length) to the next reset.
+  // Longer windows, or no usable reset time, keep the normal frame.
+  var SESSION_MIN = 300;
+  function planFrame(plat, fr, poolId) {
+    if (!poolId || fr.W >= SESSION_MIN) return fr;
+    var pools = (plat.plan && plat.plan.pools) || [];
+    var pool = pools.filter(function (p) { return p.id === poolId; })[0];
+    var end = pool ? Date.parse(pool.resets) : NaN;
+    if (isNaN(end) || end < fr.hiMs) return fr;
+    var start = end - SESSION_MIN * 60000;
+    if (start > fr.hiMs) return fr;
+    return {
+      startMs: fr.startMs, endIdx: fr.endIdx, loIdx: fr.loIdx, W: SESSION_MIN, session: true,
+      xMin: start, xMax: end, loMs: start, hiMs: end
+    };
+  }
+
   function arr(a, i) { var v = a && a[i]; return typeof v === 'number' ? v : 0; }
 
   // Per-series sums inside the window. Totals include subagents; primary = total - sub.
@@ -381,7 +399,7 @@
     WINDOWS: WINDOWS, DEFAULT_WINDOW: DEFAULT_WINDOW, windowDef: windowDef, frame: frame,
     seriesStats: seriesStats, sessionStats: sessionStats, sessionLabel: sessionLabel, totals: totals, cacheHitRate: cacheHitRate, ioRatio: ioRatio,
     valueStats: valueStats, forecastPool: forecastPool, forecastLookback: forecastLookback, cacheSupported: cacheSupported, pctText: pctText, cumulativeSeries: cumulativeSeries,
-    runsInWindow: runsInWindow, planStats: planStats,
+    runsInWindow: runsInWindow, planStats: planStats, planFrame: planFrame,
     SPANS: SPANS, DEFAULT_SPAN: DEFAULT_SPAN, spanDef: spanDef,
     rollingSeries: rollingSeries, rollingTotal: rollingTotal, rollingInfo: rollingInfo
   };

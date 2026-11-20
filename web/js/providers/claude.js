@@ -21,6 +21,8 @@
     ],
     // Plan pools that get a vertical reset marker on the plan chart, with its label.
     resetMarkers: { five_hour: '5-hour reset', seven_day: 'Weekly reset' },
+    // Pool whose session the plan chart shows in full for the short windows (30 min, 1 hour).
+    planSession: 'five_hour',
     hueBase: 25, // fallback hues stay in the warm range
     tokensAvailable: function () { return true; },
     notes: function (meta) {
