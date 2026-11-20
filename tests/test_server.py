@@ -80,6 +80,8 @@ class ServerTests(unittest.TestCase):
         s, h, b = self.req("GET", "/favicon.ico")
         self.assertEqual((s, b), (200, b"\x00\x00\x01\x00"))
         self.assertTrue(h["content-type"].startswith("image/"))
+        self.assertIn("max-age", h["cache-control"])        # icons are cacheable, everything else is no-store
+        self.assertEqual(self.req("GET", "/web/js/app.js")[1]["cache-control"], "no-store")
 
     def test_real_icons_exist_and_are_linked(self):
         real = Path(__file__).resolve().parent.parent / "web"
