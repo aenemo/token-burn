@@ -15,10 +15,11 @@ OPENAI = "openai"            # opencode's provider id for OpenAI / ChatGPT; coll
 SPLIT_KEY = "opencode:openai_split"
 HARNESS_SPLIT_KEY = "opencode:provider_split"
 CLAUDE_CODE_KEY = "opencode:claude_code_dropped"
+CLAUDE_AGENT_KEY = "opencode:claude_agent_dropped"
 # opencode provider ids that run Claude Code itself. Claude Code writes those requests to its own transcripts, which
 # the Claude adapter reads, so counting them here too would count them twice. Other providers that offer Claude
 # models (a gateway, Bedrock ...) are not in Claude Code's transcripts and stay with opencode.
-CLAUDE_CODE_PROVIDERS = ("claude-code",)
+CLAUDE_CODE_PROVIDERS = ("claude-code", "claude-agent",)
 DAYS = 30
 OVERLAP_MS = 2 * 3600 * 1000
 STALE_S = 24 * 3600
@@ -90,13 +91,14 @@ def is_claude_code(provider):
 
 
 def _drop_claude_code(store):
-    """Once: rows of the Claude Code provider that earlier versions filed under opencode are removed (the
+    """Once each: rows of the Claude Code providers that earlier versions filed under opencode are removed (the
     Claude platform already has them from Claude Code's own transcripts)."""
-    if store.kv_get(CLAUDE_CODE_KEY):
-        return
-    for pid in CLAUDE_CODE_PROVIDERS:
-        store.drop_model_prefix(PLATFORM, pid + "/")
-    store.kv_set(CLAUDE_CODE_KEY, 1)
+    if not store.kv_get(CLAUDE_CODE_KEY):
+        store.drop_model_prefix(PLATFORM, "claude-code/")
+        store.kv_set(CLAUDE_CODE_KEY, 1)
+    if not store.kv_get(CLAUDE_AGENT_KEY):
+        store.drop_model_prefix(PLATFORM, "claude-agent/")
+        store.kv_set(CLAUDE_AGENT_KEY, 1)
 
 
 def model_label(provider, model_id):

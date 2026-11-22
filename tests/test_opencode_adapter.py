@@ -221,6 +221,8 @@ class ClaudeCodeProviderTests(Base):
             ("s1", "assistant", msg(600, (100, 20, 0, 0, 0), model=("claude-code", "claude-sonnet-5-5", "low"))),
             ("s1", "assistant", msg(500, (30, 5, 0, 0, 0), model=("Claude-Code", "claude-haiku-5-5", None))),
             ("s1", "assistant", msg(400, (40, 8, 0, 0, 0), model=("gateway", "claude-sonnet-5-5", None))),
+            ("s1", "assistant", msg(350, (20, 4, 0, 0, 0), model=("claude-agent", "claude-sonnet-5-5", None))),
+            ("s1", "assistant", msg(250, (15, 3, 0, 0, 0), model=("Claude-Agent", "claude-haiku-5-5", None))),
             ("c1", "assistant", msg(300, (10, 1, 0, 0, 0), model=("claude-code", "claude-opus-5-5", None))),
         ])
 
@@ -232,7 +234,8 @@ class ClaudeCodeProviderTests(Base):
 
     def test_rows_stored_by_an_earlier_version_are_removed_once(self):
         from collector.schema import UsageRecord
-        for model in ("claude-code/claude-sonnet-5-5", "gateway/claude-sonnet-5-5"):
+        for model in ("claude-code/claude-sonnet-5-5", "claude-agent/claude-sonnet-5-5",
+                      "gateway/claude-sonnet-5-5"):
             self.store.add_usage(UsageRecord(platform="opencode", agent_kind="primary", agent_id="",
                                              session_id="s1", model=model, effort_level="", input_tokens=5,
                                              output_tokens=5, cache_read_tokens=0, cache_write_tokens=0,
@@ -240,6 +243,7 @@ class ClaudeCodeProviderTests(Base):
         self.run_collect()
         self.assertEqual(sorted({r["model"] for r in self.usage()}), ["gateway/claude-sonnet-5-5"])
         self.assertTrue(self.store.kv_get(opencode.CLAUDE_CODE_KEY))
+        self.assertTrue(self.store.kv_get(opencode.CLAUDE_AGENT_KEY))
 
 
 class StatusTests(Base):
