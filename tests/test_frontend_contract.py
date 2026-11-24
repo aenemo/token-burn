@@ -58,7 +58,7 @@ class FrontendContract(unittest.TestCase):
         self.assertIn('<script src="/web/js/providers/opencode.js"></script>', html)
         self.assertLess(html.index("providers/cursor.js"), html.index("providers/opencode.js"))
         self.assertLess(html.index("providers/opencode.js"), html.index("js/app.js"))
-        self.assertIn("<title>Token Burn {{VERSION}}</title>", html)
+        self.assertIn("<title>Token Burn</title>", html)
         self.assertIn('<h1>Token Burn <span class="ver">{{VERSION}}</span></h1>', html)
         self.assertIn("Claude Code, Cursor, opencode or OpenAI Codex", html)
         self.assertIn("Turn on a provider above to see its usage.", html)

@@ -56,9 +56,9 @@ class ServerTests(unittest.TestCase):
             self.assertEqual(h["cache-control"], "no-store")
             self.assertEqual(h["content-length"], str(len(b)))
 
-    def test_real_index_shows_version_in_title_and_heading(self):
+    def test_real_index_shows_version_in_heading(self):
         html = (Path(__file__).resolve().parent.parent / "web" / "index.html").read_text(encoding="utf-8")
-        self.assertIn("<title>Token Burn {{VERSION}}</title>", html)
+        self.assertIn("<title>Token Burn</title>", html)
         self.assertIn("{{VERSION}}</", html.split("<h1", 1)[1].split("</h1>", 1)[0] + "</")
 
     def test_pyproject_version_matches_package(self):
